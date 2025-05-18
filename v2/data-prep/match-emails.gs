@@ -9,9 +9,13 @@ function matchEmails() {
   logEmailMap(emailMap);
 
   // Specify the columns to process (0-based index)
-  const columnsToProcess = [3, 5, 7, 9, 11]; // Replace with the actual columns you want to process
+  const columnsToProcess = [4, 6, 8, 10]; // Replace with the actual columns you want to process
 
-  const unmatchedNames = processColumns(dataSheet, emailMap, columnsToProcess);
+  const unmatchedNames = processColumns(
+    dataSheet,
+    emailMap,
+    columnsToProcess
+  );
 
   // Log unmatched names for inspection
   logUnmatchedNames(unmatchedNames);
@@ -21,8 +25,15 @@ function matchEmails() {
   logBestGuesses(guesses);
 
   // Handle unmatched names with high confidence matches
-  const highConfidenceMatches = getHighConfidenceMatches(unmatchedNames, emailMap);
-  applyHighConfidenceMatches(dataSheet, highConfidenceMatches, emailMap);
+  const highConfidenceMatches = getHighConfidenceMatches(
+    unmatchedNames,
+    emailMap
+  );
+  applyHighConfidenceMatches(
+    dataSheet,
+    highConfidenceMatches,
+    emailMap
+  );
 
   // Handle unmatched single first names
   handleSingleFirstNames(dataSheet, unmatchedNames, emailMap);
@@ -39,13 +50,25 @@ function createEmailMap(sheet) {
   const preferredNameIndex = headers.indexOf('Preferred Name');
   const emailIndex = headers.indexOf('Email');
 
-  return buildEmailMap(data, firstNameIndex, lastNameIndex, preferredNameIndex, emailIndex);
+  return buildEmailMap(
+    data,
+    firstNameIndex,
+    lastNameIndex,
+    preferredNameIndex,
+    emailIndex
+  );
 }
 
-function buildEmailMap(data, firstNameIndex, lastNameIndex, preferredNameIndex, emailIndex) {
+function buildEmailMap(
+  data,
+  firstNameIndex,
+  lastNameIndex,
+  preferredNameIndex,
+  emailIndex
+) {
   const emailMap = new Map();
 
-  data.forEach(row => {
+  data.forEach((row) => {
     const firstName = normalize(row[firstNameIndex]);
     const lastName = normalize(row[lastNameIndex]);
     const preferredName = normalize(row[preferredNameIndex]);
@@ -73,14 +96,14 @@ function processColumns(sheet, emailMap, columns) {
   const dataValues = dataRange.getValues();
   const unmatchedNames = [];
 
-  columns.forEach(col => {
-    unmatchedNames.push(...setEmailColumn(sheet, dataValues, col, emailMap));
+  columns.forEach((col) => {
+    unmatchedNames.push(
+      ...setEmailColumn(sheet, dataValues, col, emailMap)
+    );
   });
 
   return unmatchedNames;
 }
-
-
 
 function setEmailColumn(sheet, dataValues, col, emailMap) {
   const newColIndex = col + 1; // Calculate new column index to insert email column
@@ -96,15 +119,15 @@ function setEmailColumn(sheet, dataValues, col, emailMap) {
       unmatchedNames.push({ name, row, col });
     }
   }
-console.log(unmatchedNames);
+  console.log(unmatchedNames);
   return unmatchedNames;
 }
 
-
-
 function logEmailMap(emailMap) {
   const entries = Array.from(emailMap.entries());
-  const logEntries = entries.map(entry => `Name: ${entry[0]}, Email: ${entry[1]}`).join('\n');
+  const logEntries = entries
+    .map((entry) => `Name: ${entry[0]}, Email: ${entry[1]}`)
+    .join('\n');
   Logger.log(logEntries);
 }
 
@@ -114,13 +137,21 @@ function getBestGuesses(unmatchedNames, emailMap) {
 
   unmatchedNames.forEach(({ name, row, col }) => {
     if (name) {
-      const bestMatches = names.map(existingName => {
-        const distance = levenshteinDistance(name, existingName);
-        const confidence = 1 - distance / Math.max(name.length, existingName.length);
-        return { existingName, confidence };
-      }).sort((a, b) => b.confidence - a.confidence);
+      const bestMatches = names
+        .map((existingName) => {
+          const distance = levenshteinDistance(name, existingName);
+          const confidence =
+            1 - distance / Math.max(name.length, existingName.length);
+          return { existingName, confidence };
+        })
+        .sort((a, b) => b.confidence - a.confidence);
 
-      guesses.push({ name, row, col, bestMatches: bestMatches.slice(0, 5) });
+      guesses.push({
+        name,
+        row,
+        col,
+        bestMatches: bestMatches.slice(0, 5),
+      });
     }
   });
 
@@ -128,10 +159,19 @@ function getBestGuesses(unmatchedNames, emailMap) {
 }
 
 function logBestGuesses(guesses) {
-  const logEntries = guesses.map(entry => {
-    const bestGuesses = entry.bestMatches.map(guess => `Name: ${guess.existingName}, Confidence: ${guess.confidence.toFixed(2)}`).join('; ');
-    return `Unmatched Name: ${entry.name}, Best Guesses: ${bestGuesses}`;
-  }).join('\n');
+  const logEntries = guesses
+    .map((entry) => {
+      const bestGuesses = entry.bestMatches
+        .map(
+          (guess) =>
+            `Name: ${
+              guess.existingName
+            }, Confidence: ${guess.confidence.toFixed(2)}`
+        )
+        .join('; ');
+      return `Unmatched Name: ${entry.name}, Best Guesses: ${bestGuesses}`;
+    })
+    .join('\n');
   Logger.log(logEntries);
 }
 
@@ -151,7 +191,10 @@ function levenshteinDistance(a, b) {
       if (b.charAt(i - 1) === a.charAt(j - 1)) {
         matrix[i][j] = matrix[i - 1][j - 1];
       } else {
-        matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1));
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1)
+        );
       }
     }
   }
@@ -165,15 +208,24 @@ function getHighConfidenceMatches(unmatchedNames, emailMap) {
 
   unmatchedNames.forEach(({ name, row, col }) => {
     if (name) {
-      const bestMatches = names.map(existingName => {
-        const distance = levenshteinDistance(name, existingName);
-        const confidence = 1 - distance / Math.max(name.length, existingName.length);
-        return { existingName, confidence };
-      }).sort((a, b) => b.confidence - a.confidence);
+      const bestMatches = names
+        .map((existingName) => {
+          const distance = levenshteinDistance(name, existingName);
+          const confidence =
+            1 - distance / Math.max(name.length, existingName.length);
+          return { existingName, confidence };
+        })
+        .sort((a, b) => b.confidence - a.confidence);
 
       const bestMatch = bestMatches[0];
       if (bestMatch.confidence > 0.75) {
-        highConfidenceMatches.push({ name, existingName: bestMatch.existingName, confidence: bestMatch.confidence, row, col });
+        highConfidenceMatches.push({
+          name,
+          existingName: bestMatch.existingName,
+          confidence: bestMatch.confidence,
+          row,
+          col,
+        });
       }
     }
   });
@@ -181,7 +233,11 @@ function getHighConfidenceMatches(unmatchedNames, emailMap) {
   return highConfidenceMatches;
 }
 
-function applyHighConfidenceMatches(sheet, highConfidenceMatches, emailMap) {
+function applyHighConfidenceMatches(
+  sheet,
+  highConfidenceMatches,
+  emailMap
+) {
   highConfidenceMatches.forEach(({ existingName, row, col }) => {
     const email = emailMap.get(existingName);
     const newColIndex = col + 1;
@@ -190,7 +246,9 @@ function applyHighConfidenceMatches(sheet, highConfidenceMatches, emailMap) {
 }
 
 function logUnmatchedNames(unmatchedNames) {
-  const logEntries = unmatchedNames.map(entry => console.log(entry)); //`Unmatched Name: ${entry.name}, Row: ${entry.row + 1}, Column: ${entry.col + 1}`).join('\n');
+  const logEntries = unmatchedNames.map((entry) =>
+    console.log(entry)
+  ); //`Unmatched Name: ${entry.name}, Row: ${entry.row + 1}, Column: ${entry.col + 1}`).join('\n');
   Logger.log(logEntries);
 }
 
@@ -211,7 +269,9 @@ function handleSingleFirstNames(sheet, unmatchedNames, emailMap) {
       const possibleEmails = firstNameMap.get(name);
       if (possibleEmails && possibleEmails.length === 1) {
         const newColIndex = col + 1;
-        sheet.getRange(row + 1, newColIndex + 1).setValue(possibleEmails[0]);
+        sheet
+          .getRange(row + 1, newColIndex + 1)
+          .setValue(possibleEmails[0]);
       }
     }
   });
@@ -238,10 +298,11 @@ function handleFirstNameLastInitial(sheet, unmatchedNames, emailMap) {
         const possibleEmails = nameMap.get(name);
         if (possibleEmails && possibleEmails.length === 1) {
           const newColIndex = col + 1;
-          sheet.getRange(row + 1, newColIndex + 1).setValue(possibleEmails[0]);
+          sheet
+            .getRange(row + 1, newColIndex + 1)
+            .setValue(possibleEmails[0]);
         }
       }
     }
   });
 }
-
