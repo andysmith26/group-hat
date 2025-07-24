@@ -249,16 +249,45 @@ function loadConnectionsFromFile(event) {
 
 function parsePeopleStrings(data) {
   let people = [];
-  for (let line of data) {
+  let errors = [];
+
+  for (let i = 0; i < data.length; i++) {
+    const line = data[i];
+    if (!line || line.trim() === '') continue;
+
     const parts = line.split(',').map((part) => part.trim());
-    let newPerson = new Person(...parts);
-    people.push(newPerson);
+
+    if (parts.length < 3) {
+      errors.push(
+        `Line ${
+          i + 1
+        }: Expected at least 3 fields (id, lastName, firstName), got ${
+          parts.length
+        }`
+      );
+      continue;
+    }
+
+    try {
+      let newPerson = new Person(...parts);
+      people.push(newPerson);
+    } catch (e) {
+      errors.push(`Line ${i + 1}: ${e.message}`);
+    }
   }
 
-  // console.log(`${people.length} people added`);
-  // people.forEach((p) => console.log(p.toString()));
+  if (errors.length > 0) {
+    alert(
+      'CSV parsing errors:\n' +
+        errors.slice(0, 5).join('\n') +
+        (errors.length > 5
+          ? `\n... and ${errors.length - 5} more errors`
+          : '')
+    );
+  }
+
   scheme.setPeople(people);
-  console.log(`${scheme.people.length} people added`);
+  console.log(`${scheme.people.length} people added successfully`);
 }
 
 function parseGroupsStrings(data) {
@@ -447,4 +476,21 @@ function keyPressed() {
     saveCanvasFiles();
     return false;
   }
+}
+
+function showLoadingIndicator(message) {
+  // Add a div to show loading status
+  const indicator = createDiv(message);
+  indicator.position(width / 2 - 100, height / 2);
+  indicator.style('background-color', 'white');
+  indicator.style('padding', '20px');
+  indicator.style('border', '2px solid black');
+  indicator.style('z-index', '1000');
+  indicator.id('loading-indicator');
+  return indicator;
+}
+
+function hideLoadingIndicator() {
+  const indicator = select('#loading-indicator');
+  if (indicator) indicator.remove();
 }
