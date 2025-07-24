@@ -11,6 +11,9 @@ class Scheme {
     this.currentGroups = [];
     this.useGroupPreferences = true;
     this.rankThreshold = 2;
+    this.history = [];
+    this.historyIndex = -1;
+    this.maxHistorySize = 50;
   }
 
   setRankThreshold(threshold) {
@@ -674,6 +677,44 @@ class Scheme {
     text(`Unassigned: ${unassignedCount}`, 10, height - 60);
     text(`Unhappy: ${unhappyCount}`, 10, height - 30);
   }
+
+  saveState() {
+    // Remove any states after current index
+    this.history = this.history.slice(0, this.historyIndex + 1);
+
+    // Add new state
+    this.history.push(this.serialize());
+
+    // Limit history size
+    if (this.history.length > this.maxHistorySize) {
+      this.history.shift();
+    } else {
+      this.historyIndex++;
+    }
+  }
+
+  undo() {
+    if (this.historyIndex > 0) {
+      this.historyIndex--;
+      this.restoreState(this.history[this.historyIndex]);
+    }
+  }
+
+  redo() {
+    if (this.historyIndex < this.history.length - 1) {
+      this.historyIndex++;
+      this.restoreState(this.history[this.historyIndex]);
+    }
+  }
+
+  restoreState(jsonString) {
+    const restored = Scheme.deserialize(jsonString);
+    this.people = restored.people;
+    this.groups = restored.groups;
+    this.connections = restored.connections;
+    this.useGroupPreferences = restored.useGroupPreferences;
+  }
+
   serialize() {
     return JSON.stringify({
       version: '2.5.1',

@@ -429,3 +429,22 @@ function resizeCanvasToFitGroups() {
     console.log(`Canvas resized to ${maxX}x${maxY}`);
   }
 }
+
+function keyPressed() {
+  // Ctrl/Cmd + Z for undo
+  if ((keyIsDown(CONTROL) || keyIsDown(91)) && keyCode === 90) {
+    if (keyIsDown(SHIFT)) {
+      scheme.redo();
+    } else {
+      scheme.undo();
+    }
+    needsRedraw = true;
+    return false;
+  }
+
+  // Ctrl/Cmd + S for save
+  if ((keyIsDown(CONTROL) || keyIsDown(91)) && keyCode === 83) {
+    saveCanvasFiles();
+    return false;
+  }
+}
