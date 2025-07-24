@@ -1,7 +1,7 @@
 function matchEmails() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const peopleSheet = ss.getSheetByName('Sheet1'); // Replace 'Sheet1' with the name of your first tab
-  const dataSheet = ss.getSheetByName('Sheet2'); // Replace 'Sheet2' with the name of your second tab
+  const peopleSheet = ss.getSheetByName('people'); // Replace with the people tab
+  const dataSheet = ss.getSheetByName('responses'); // Replace with name of the responses tab
 
   const emailMap = createEmailMap(peopleSheet);
 

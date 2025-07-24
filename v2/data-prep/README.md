@@ -1,5 +1,9 @@
 # matchEmails Script
 
+## Use Case
+
+Advisory requests mostly, where responses include names of other students they'd like to be grouped with. But we don't know exactly who they're referring to unless we can turn the name they wrote into an email address.
+
 ## Overview
 
 The `matchEmails` function is designed to match names from one Google Sheets tab with corresponding email addresses from another tab. The script works by creating an email map from the names and emails listed in the first tab and then uses this map to populate corresponding email addresses in the second tab. Additionally, the script attempts to handle and match names that do not have direct matches, using techniques such as best guesses and handling single first names or "Firstname LastInitial" formats.
