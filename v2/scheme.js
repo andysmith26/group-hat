@@ -95,7 +95,26 @@ class Scheme {
   }
 
   sequentialAssignment(unassignedPeople) {
-    // Implementation will be added in the next step
+    // Sort people alphabetically
+    unassignedPeople.sort((a, b) => {
+      const nameA = `${a.lastName} ${a.firstName}`;
+      const nameB = `${b.lastName} ${b.firstName}`;
+      return nameA.localeCompare(nameB);
+    });
+
+    // Fill groups one by one
+    let groupIndex = 0;
+    for (let person of unassignedPeople) {
+      while (groupIndex < this.groups.length) {
+        const group = this.groups[groupIndex];
+        if (group.hasAvailableSlot()) {
+          group.addMember(person, group.x + 10, group.y + 40);
+          break;
+        } else {
+          groupIndex++;
+        }
+      }
+    }
   }
 
   balancedAssignment(unassignedPeople) {
