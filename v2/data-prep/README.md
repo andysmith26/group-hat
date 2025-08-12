@@ -25,6 +25,9 @@ The `matchEmails` function is designed to match names from one Google Sheets tab
    - This sheet should contain columns that include the names of individuals that need to be matched with their email addresses.
    - Specify the columns (0-based index) to process by modifying the `columnsToProcess` array in the script.
    - no headers
+   - sort by email column and scan for duplicates.
+   - note any legit special requests that are not names
+   - delete n/a, lebron james, and other not matching responses
    - **Create blank columns next to each of the columns you want to process to store the matched email addresses.**
 
 ### Script Execution
