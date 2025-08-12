@@ -30,7 +30,7 @@ The `matchEmails` function is designed to match names from one Google Sheets tab
 
 1. Open your Google Sheet.
 2. Go to Extensions -> Apps Script.
-3. Replace any existing code with the provided script.
+3. Replace any existing code with `extract-group-prefs.gs`.
 4. Save and run the script.
 5. Allow access.
 
