@@ -15,6 +15,10 @@ class Person {
     this.offsetX = 0;
     this.offsetY = 0;
     this.highlighted = false;
+
+    // New pinned assignment properties
+    this.pinned = false;
+    this.pinnedGroupTitle = null;
   }
 
   isMouseOver() {
@@ -45,6 +49,23 @@ class Person {
   getPreferenceRank(groupTitle) {
     const rank = this.groupPreferences.indexOf(groupTitle);
     return rank !== -1 ? rank + 1 : null; // Adding 1 to make it 1-based instead of 0-based
+  }
+
+  // New pinned assignment methods
+  pinToGroup(groupTitle) {
+    this.pinned = true;
+    this.pinnedGroupTitle = groupTitle;
+    console.log(`${this.displayName} pinned to ${groupTitle}`);
+  }
+
+  unpin() {
+    this.pinned = false;
+    this.pinnedGroupTitle = null;
+    console.log(`${this.displayName} unpinned`);
+  }
+
+  isPinnedTo(groupTitle) {
+    return this.pinned && this.pinnedGroupTitle === groupTitle;
   }
 
   calculateHappiness(group) {
@@ -98,6 +119,9 @@ class Person {
   }
 
   toString() {
-    return `${this.id}: ${this.lastName}, ${this.firstName}`;
+    const pinnedStatus = this.pinned
+      ? ` (pinned to ${this.pinnedGroupTitle})`
+      : '';
+    return `${this.id}: ${this.lastName}, ${this.firstName}${pinnedStatus}`;
   }
 }

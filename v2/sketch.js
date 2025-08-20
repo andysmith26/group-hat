@@ -10,7 +10,7 @@ let algorithmSelect,
   preferenceToggleBtn;
 let rankThresholdSelect;
 
-console.log('sketch.js loaded');
+console.log('Enhanced sketch.js loaded');
 
 function setup() {
   createCanvas(2000, 750);
@@ -32,10 +32,6 @@ function setup() {
   adminToolsModal = select('#adminToolsModal');
   closeBtn = select('.close');
 
-  //   // Add rank threshold dropdown handling
-  //   rankThresholdSelect = select('#rankThreshold');
-  //   rankThresholdSelect.changed(updateRankThreshold);
-
   adminToolsBtn.mousePressed(showAdminTools);
   closeBtn.mousePressed(hideAdminTools);
 
@@ -45,6 +41,7 @@ function setup() {
       hideAdminTools();
     }
   });
+
   preferenceToggleBtn = select('#preferenceToggleBtn');
   preferenceToggleBtn.mousePressed(togglePreferenceMode);
 }
@@ -67,28 +64,47 @@ function draw() {
     scheme.clearHighlights();
   }
 
-  // showTasks();
+  // Show pinned assignment info in hover
+  if (scheme.currentHover && scheme.currentHover.pinned) {
+    showPinnedInfo(scheme.currentHover);
+  }
+}
+
+function showPinnedInfo(person) {
+  fill(255, 0, 255, 200);
+  stroke(0);
+  strokeWeight(1);
+
+  const infoWidth = 200;
+  const infoHeight = 40;
+  const infoX = mouseX + 20;
+  const infoY = mouseY - 50;
+
+  rect(infoX, infoY, infoWidth, infoHeight);
+
+  fill(0);
+  noStroke();
+  textAlign(LEFT, CENTER);
+  textSize(12);
+  text(
+    `📌 PINNED to ${person.pinnedGroupTitle}`,
+    infoX + 5,
+    infoY + infoHeight / 2
+  );
 }
 
 function loadTestData() {
   loadGroupsFromPath('test-groups.csv');
   loadPeopleFromPath('test-people.csv');
-  //   loadConnectionsFromPath('test-connections.csv');
   loadGroupPreferencesFromPath('test-group-preferences.csv');
   console.log('loading test data');
 }
+
 function togglePreferenceMode() {
   scheme.useGroupPreferences = !scheme.useGroupPreferences;
   console.log(
     `Using group preferences: ${scheme.useGroupPreferences}`
   );
-}
-
-function showTasks() {
-  fill(200, 50, 50);
-  textSize(20);
-  textAlign(LEFT, BOTTOM);
-  text('all looks okay');
 }
 
 function mousePressed() {
@@ -111,15 +127,17 @@ function mouseDragged() {
 
 function showAdminTools() {
   adminToolsModal.style('display', 'block');
+  // Update UI elements when modal opens
+  if (typeof updateGroupSelect === 'function') {
+    updateGroupSelect();
+  }
+  if (typeof updatePinnedList === 'function') {
+    updatePinnedList();
+  }
 }
 
 function hideAdminTools() {
   adminToolsModal.style('display', 'none');
-}
-
-function updateRankThreshold() {
-  let threshold = int(rankThresholdSelect.value());
-  scheme.setRankThreshold(threshold);
 }
 
 function saveCanvasFiles() {
@@ -186,6 +204,14 @@ function loadSchemeFromFile(event) {
       scheme = Scheme.deserialize(jsonString);
       resizeCanvasToFitGroups();
       console.log('scheme file successfully read.');
+
+      // Update UI if functions exist
+      if (typeof updateGroupSelect === 'function') {
+        updateGroupSelect();
+      }
+      if (typeof updatePinnedList === 'function') {
+        updatePinnedList();
+      }
     };
     reader.readAsText(file);
   }
@@ -288,6 +314,11 @@ function parsePeopleStrings(data) {
 
   scheme.setPeople(people);
   console.log(`${scheme.people.length} people added successfully`);
+
+  // Update UI
+  if (typeof updateGroupSelect === 'function') {
+    updateGroupSelect();
+  }
 }
 
 function parseGroupsStrings(data) {
@@ -309,6 +340,11 @@ function parseGroupsStrings(data) {
   scheme.setGroups(groups);
   console.log(`${scheme.groups.length} groups added`);
   resizeCanvasToFitGroups();
+
+  // Update UI
+  if (typeof updateGroupSelect === 'function') {
+    updateGroupSelect();
+  }
 }
 
 function parseConnectionsStrings(data) {
@@ -352,16 +388,24 @@ function parseGroupPreferencesStrings(data) {
   console.log('Group preferences loaded and assigned to people');
 }
 
-function deepCopy(array) {
-  return array.map((item) =>
-    Array.isArray(item) ? deepCopy(item) : item
-  );
-}
-
 function performAutoassign() {
   if (scheme) {
     let algorithm = algorithmSelect.value();
+
+    // Show pinned assignment info before starting
+    const pinnedCount = scheme.getPinnedPeople().length;
+    if (pinnedCount > 0) {
+      console.log(
+        `Starting autoassignment with ${pinnedCount} pinned assignments`
+      );
+    }
+
     scheme.autoassign(algorithm);
+
+    // Update UI after assignment
+    if (typeof updatePinnedList === 'function') {
+      updatePinnedList();
+    }
   }
 }
 
@@ -379,8 +423,16 @@ function startOver() {
       person.happiness = 0;
     });
 
+    // Immediately reassign pinned people to their groups
+    scheme.assignPinnedPeople();
+
     // Recalculate happiness for all groups
     scheme.groups.forEach((group) => group.recalculateHappiness());
+
+    // Update UI
+    if (typeof updatePinnedList === 'function') {
+      updatePinnedList();
+    }
   }
 }
 
@@ -421,9 +473,16 @@ function generateGoogleSheetsData() {
         );
 
       // Return the i-th member if it exists, otherwise an empty string
-      return sortedMembers[i]
+      let memberText = sortedMembers[i]
         ? `${sortedMembers[i].lastName}, ${sortedMembers[i].firstName}`
         : '';
+
+      // Add pin indicator for pinned members
+      if (sortedMembers[i] && sortedMembers[i].pinned) {
+        memberText += ' 📌';
+      }
+
+      return memberText;
     });
     sheetsData += row.join('\t') + '\n';
   }
@@ -467,13 +526,76 @@ function keyPressed() {
     } else {
       scheme.undo();
     }
-    needsRedraw = true;
     return false;
   }
 
   // Ctrl/Cmd + S for save
   if ((keyIsDown(CONTROL) || keyIsDown(91)) && keyCode === 83) {
     saveCanvasFiles();
+    return false;
+  }
+
+  // Ctrl/Cmd + P for quick pin (when hovering over a person)
+  if ((keyIsDown(CONTROL) || keyIsDown(91)) && keyCode === 80) {
+    if (scheme.currentHover) {
+      const personId = scheme.currentHover.id;
+      const availableGroups = scheme.groups
+        .map((g) => g.title)
+        .join(', ');
+      const groupTitle = prompt(
+        `Pin ${scheme.currentHover.displayName} to which group?\n\nAvailable groups: ${availableGroups}`
+      );
+
+      if (
+        groupTitle &&
+        scheme.pinPersonToGroup(personId, groupTitle)
+      ) {
+        if (typeof updatePinnedList === 'function') {
+          updatePinnedList();
+        }
+        console.log(
+          `✅ ${scheme.currentHover.displayName} pinned to ${groupTitle}`
+        );
+      } else if (groupTitle) {
+        alert(
+          `❌ Failed to pin. Check that "${groupTitle}" is a valid group name.`
+        );
+      }
+    } else {
+      alert(
+        'Hover over a person first, then press Ctrl+P to pin them to a group'
+      );
+    }
+    return false;
+  }
+
+  // Ctrl/Cmd + U for quick unpin (when hovering over a pinned person)
+  if ((keyIsDown(CONTROL) || keyIsDown(91)) && keyCode === 85) {
+    if (scheme.currentHover && scheme.currentHover.pinned) {
+      const personId = scheme.currentHover.id;
+      if (
+        confirm(
+          `Unpin ${scheme.currentHover.displayName} from ${scheme.currentHover.pinnedGroupTitle}?`
+        )
+      ) {
+        if (scheme.unpinPerson(personId)) {
+          if (typeof updatePinnedList === 'function') {
+            updatePinnedList();
+          }
+          console.log(
+            `✅ ${scheme.currentHover.displayName} unpinned`
+          );
+        }
+      }
+    } else if (scheme.currentHover) {
+      alert(
+        `${scheme.currentHover.displayName} is not pinned to any group`
+      );
+    } else {
+      alert(
+        'Hover over a pinned person first, then press Ctrl+U to unpin them'
+      );
+    }
     return false;
   }
 }

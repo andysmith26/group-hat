@@ -6,7 +6,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
-    <title>Group Hat</title>
+    <title>Group Hat - Enhanced with Pinned Assignments</title>
     <link rel="stylesheet" href="style.css" />
     <style>
       .top-bar {
@@ -26,6 +26,88 @@
       }
       .top-bar button {
         margin-left: 10px;
+      }
+      .pinned-controls {
+        margin: 10px 0;
+        padding: 10px;
+        background-color: #f9f9f9;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+      }
+      .pinned-controls h4 {
+        margin: 0 0 10px 0;
+        color: #555;
+      }
+      .pin-form {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+      .pin-form input,
+      .pin-form select {
+        padding: 5px;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+      }
+      .pin-form button {
+        background-color: #ff6b9d;
+        color: white;
+        border: none;
+        padding: 5px 10px;
+        border-radius: 3px;
+        cursor: pointer;
+      }
+      .pin-form button:hover {
+        background-color: #e55a8a;
+      }
+      .pinned-list {
+        max-height: 150px;
+        overflow-y: auto;
+        border: 1px solid #ddd;
+        padding: 5px;
+        background-color: white;
+      }
+      .pinned-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 5px;
+        margin: 2px 0;
+        background-color: #ffe6f0;
+        border-radius: 3px;
+      }
+      .unpin-btn {
+        background-color: #dc3545;
+        color: white;
+        border: none;
+        padding: 2px 6px;
+        border-radius: 2px;
+        cursor: pointer;
+        font-size: 11px;
+      }
+      .unpin-btn:hover {
+        background-color: #c82333;
+      }
+      .info-text {
+        margin-left: 10px;
+        font-size: 0.9em;
+        color: #555;
+      }
+      .legend {
+        margin: 10px 0;
+        padding: 8px;
+        background-color: #f0f8ff;
+        border: 1px solid #b3d9ff;
+        border-radius: 3px;
+        font-size: 0.9em;
+      }
+      .legend-item {
+        margin: 2px 0;
+      }
+      .pin-icon {
+        color: #ff6b9d;
+        font-weight: bold;
       }
     </style>
   </head>
@@ -53,17 +135,44 @@
           <button id="adminToolsBtn">Scary Admin Tools</button>
         </div>
       </div>
-      <style>
-        .info-text {
-          margin-left: 10px;
-          font-size: 0.9em;
-          color: #555;
-        }
-      </style>
 
       <div id="adminToolsModal" class="modal">
         <div class="modal-content">
           <span class="close">&times;</span>
+
+          <!-- Pinned Assignment Controls -->
+          <div class="pinned-controls">
+            <h4>📌 Pinned Assignments</h4>
+            <div class="pin-form">
+              <input
+                type="text"
+                id="personIdInput"
+                placeholder="Person ID (e.g., johnma)"
+              />
+              <select id="groupSelect">
+                <option value="">Select Group...</option>
+              </select>
+              <button onclick="pinPersonToGroup()">
+                Pin to Group
+              </button>
+            </div>
+            <div class="legend">
+              <div class="legend-item">
+                <span class="pin-icon">📌</span> Pinned people have
+                magenta borders and a "P" icon
+              </div>
+              <div class="legend-item">
+                ⚡ Pinned assignments happen BEFORE auto-assignment
+              </div>
+              <div class="legend-item">
+                ⚠️ If pinned group is full, assignment will fail
+              </div>
+            </div>
+            <div id="pinnedList" class="pinned-list"></div>
+          </div>
+
+          <hr />
+
           <button id="startOverBtn">Start Over</button>
           <br />
           <button id="loadTestDataBtn">Load Test Data</button>
@@ -117,7 +226,7 @@
             Autoassign
           </button>
 
-          <p>version 2.6.1</p>
+          <p>version 2.6.2-pinned</p>
         </div>
       </div>
     </main>
@@ -129,7 +238,121 @@
     <script src="sketch.js"></script>
 
     <script>
-      console.log('HTML file loaded successfully.');
+      console.log('Enhanced HTML file loaded successfully.');
+
+      // Pinned assignment functions
+      function pinPersonToGroup() {
+        const personId = document
+          .getElementById('personIdInput')
+          .value.trim();
+        const groupTitle =
+          document.getElementById('groupSelect').value;
+
+        if (!personId || !groupTitle) {
+          alert('Please enter both Person ID and select a Group');
+          return;
+        }
+
+        if (scheme.pinPersonToGroup(personId, groupTitle)) {
+          document.getElementById('personIdInput').value = '';
+          updatePinnedList();
+          alert(`✅ ${personId} pinned to ${groupTitle}`);
+        } else {
+          alert(
+            '❌ Failed to pin person. Check Person ID and Group name.'
+          );
+        }
+      }
+
+      function unpinPerson(personId) {
+        if (scheme.unpinPerson(personId)) {
+          updatePinnedList();
+          alert(`✅ ${personId} unpinned`);
+        } else {
+          alert('❌ Failed to unpin person');
+        }
+      }
+
+      function updatePinnedList() {
+        const pinnedList = document.getElementById('pinnedList');
+        const pinnedPeople = scheme.getPinnedPeople();
+
+        if (pinnedPeople.length === 0) {
+          pinnedList.innerHTML =
+            '<div style="color: #999; font-style: italic;">No pinned assignments</div>';
+          return;
+        }
+
+        pinnedList.innerHTML = pinnedPeople
+          .map(
+            (person) => `
+          <div class="pinned-item">
+            <span>${person.displayName} → ${person.pinnedGroupTitle}</span>
+            <button class="unpin-btn" onclick="unpinPerson('${person.id}')">Unpin</button>
+          </div>
+        `
+          )
+          .join('');
+      }
+
+      function updateGroupSelect() {
+        const groupSelect = document.getElementById('groupSelect');
+        groupSelect.innerHTML =
+          '<option value="">Select Group...</option>';
+
+        if (scheme && scheme.groups) {
+          scheme.groups.forEach((group) => {
+            const option = document.createElement('option');
+            option.value = group.title;
+            option.textContent = group.title;
+            groupSelect.appendChild(option);
+          });
+        }
+      }
+
+      // Note: showAdminTools is defined in sketch.js and handles UI updates there
+
+      // Add keyboard shortcut for pinning (Ctrl+P)
+      function keyPressed() {
+        // Existing shortcuts
+        if ((keyIsDown(CONTROL) || keyIsDown(91)) && keyCode === 90) {
+          if (keyIsDown(SHIFT)) {
+            scheme.redo();
+          } else {
+            scheme.undo();
+          }
+          return false;
+        }
+
+        if ((keyIsDown(CONTROL) || keyIsDown(91)) && keyCode === 83) {
+          saveCanvasFiles();
+          return false;
+        }
+
+        // New shortcut: Ctrl+P for quick pin
+        if ((keyIsDown(CONTROL) || keyIsDown(91)) && keyCode === 80) {
+          if (scheme.currentHover) {
+            const personId = scheme.currentHover.id;
+            const groupTitle = prompt(
+              `Pin ${scheme.currentHover.displayName} to which group?`
+            );
+            if (
+              groupTitle &&
+              scheme.pinPersonToGroup(personId, groupTitle)
+            ) {
+              updatePinnedList();
+              alert(
+                `✅ ${scheme.currentHover.displayName} pinned to ${groupTitle}`
+              );
+            }
+          } else {
+            alert(
+              'Hover over a person first, then press Ctrl+P to pin them'
+            );
+          }
+          return false;
+        }
+      }
     </script>
   </body>
 </html>

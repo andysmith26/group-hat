@@ -57,9 +57,52 @@ class Scheme {
     });
   }
 
+  // New pinned assignment methods
+  pinPersonToGroup(personId, groupTitle) {
+    const person = this.people.find((p) => p.id === personId);
+    const group = this.groups.find((g) => g.title === groupTitle);
+
+    if (!person) {
+      console.error(`Person not found: ${personId}`);
+      return false;
+    }
+
+    if (!group) {
+      console.error(`Group not found: ${groupTitle}`);
+      return false;
+    }
+
+    person.pinToGroup(groupTitle);
+    return true;
+  }
+
+  unpinPerson(personId) {
+    const person = this.people.find((p) => p.id === personId);
+    if (person) {
+      person.unpin();
+      return true;
+    }
+    console.error(`Person not found: ${personId}`);
+    return false;
+  }
+
+  getPinnedPeople() {
+    return this.people.filter((p) => p.pinned);
+  }
+
+  getUnpinnedPeople() {
+    return this.people.filter((p) => !p.pinned);
+  }
+
+  // Enhanced autoassignment with pinned support
   autoassign(algorithm) {
+    // First, handle pinned assignments
+    this.assignPinnedPeople();
+
+    // Then handle regular unassigned people (excluding pinned ones)
     const unassignedPeople = this.people.filter(
       (person) =>
+        !person.pinned && // Exclude pinned people
         !this.groups.some((group) => group.members.includes(person))
     );
 
@@ -79,6 +122,61 @@ class Scheme {
 
     this.updateAllHappiness();
     this.ensureDataQuality();
+  }
+
+  assignPinnedPeople() {
+    const pinnedPeople = this.getPinnedPeople();
+
+    console.log(
+      `Assigning ${pinnedPeople.length} pinned people first`
+    );
+
+    for (let person of pinnedPeople) {
+      // Remove person from any current group first
+      for (let group of this.groups) {
+        group.removeMember(person);
+      }
+
+      // Find the pinned group
+      const targetGroup = this.groups.find(
+        (g) => g.title === person.pinnedGroupTitle
+      );
+
+      if (targetGroup) {
+        if (targetGroup.hasAvailableSlot()) {
+          // Calculate position for the person in the group
+          const slotIndex = targetGroup.getNearestEmptySlot(
+            targetGroup.x + 10,
+            targetGroup.y + 40
+          );
+          if (slotIndex !== -1) {
+            targetGroup.members[slotIndex] = person;
+            person.x = targetGroup.x + 10;
+            person.y = targetGroup.y + slotIndex * 40 + 40;
+            person.updateHappiness(targetGroup);
+            console.log(
+              `Successfully pinned ${person.displayName} to ${targetGroup.title} at slot ${slotIndex}`
+            );
+          } else {
+            console.error(
+              `Could not find valid slot in ${targetGroup.title} for ${person.displayName}`
+            );
+          }
+        } else {
+          console.warn(
+            `Pinned group ${targetGroup.title} is full! Cannot place ${person.displayName}`
+          );
+          // Optionally, you could force the assignment by expanding the group or removing someone
+        }
+      } else {
+        console.error(
+          `Pinned group ${person.pinnedGroupTitle} not found for ${person.displayName}`
+        );
+      }
+    }
+
+    // Recalculate happiness for all groups after pinned assignments
+    this.groups.forEach((group) => group.recalculateHappiness());
   }
 
   randomAssignment(unassignedPeople) {
@@ -268,6 +366,39 @@ class Scheme {
       console.log(`dragging: ${this.currentDragged}`);
       let draggedPerson = this.currentDragged;
 
+      // Check if this is a pinned person being dragged
+      if (draggedPerson.pinned) {
+        const shouldUnpin = confirm(
+          `${draggedPerson.displayName} is pinned to ${draggedPerson.pinnedGroupTitle}. Do you want to unpin them?`
+        );
+        if (shouldUnpin) {
+          draggedPerson.unpin();
+          console.log(
+            `Unpinned ${draggedPerson.displayName} due to manual drag`
+          );
+        } else {
+          // Put them back in their pinned group
+          const pinnedGroup = this.groups.find(
+            (g) => g.title === draggedPerson.pinnedGroupTitle
+          );
+          if (pinnedGroup && pinnedGroup.hasAvailableSlot()) {
+            const slotIndex = pinnedGroup.getNearestEmptySlot(
+              pinnedGroup.x + 10,
+              pinnedGroup.y + 40
+            );
+            if (slotIndex !== -1) {
+              pinnedGroup.members[slotIndex] = draggedPerson;
+              draggedPerson.x = pinnedGroup.x + 10;
+              draggedPerson.y = pinnedGroup.y + slotIndex * 40 + 40;
+            }
+          }
+          draggedPerson.stopDragging();
+          this.currentDragged = null;
+          this.ensureDataQuality();
+          return;
+        }
+      }
+
       // Remove dragged person from all groups
       for (let group of this.groups) {
         group.removeMember(draggedPerson);
@@ -319,6 +450,7 @@ class Scheme {
       (person) => person.connections.length > 1
     ).length;
   }
+
   updateAllHappiness() {
     for (let group of this.groups) {
       for (let person of group.members) {
@@ -328,6 +460,7 @@ class Scheme {
       }
     }
   }
+
   validateDataQuality() {
     let errors = [];
     let warnings = [];
@@ -393,7 +526,13 @@ class Scheme {
       }
       if (validConnections.length !== person.connections.length) {
         person.connections = validConnections;
-        this.updatePersonHappiness(person);
+        // Update happiness for this person if they're in a group
+        const assignedGroup = this.groups.find((group) =>
+          group.members.includes(person)
+        );
+        if (assignedGroup) {
+          person.updateHappiness(assignedGroup);
+        }
       }
     }
 
@@ -440,6 +579,20 @@ class Scheme {
             );
           }
           occupiedPositions.add(position);
+        }
+      }
+    }
+
+    // Validate pinned assignments
+    for (let person of this.people) {
+      if (person.pinned) {
+        const pinnedGroup = this.groups.find(
+          (g) => g.title === person.pinnedGroupTitle
+        );
+        if (!pinnedGroup) {
+          errors.push(
+            `Person ${person.id} is pinned to non-existent group: ${person.pinnedGroupTitle}`
+          );
         }
       }
     }
@@ -579,8 +732,13 @@ class Scheme {
     let assignedToGroup = this.groups.some((group) =>
       group.members.includes(person)
     );
-    if (!assignedToGroup) {
-      stroke(200); // Black outline if not assigned to any group
+
+    // Special styling for pinned people
+    if (person.pinned) {
+      stroke(255, 0, 255); // Magenta outline for pinned people
+      strokeWeight(3);
+    } else if (!assignedToGroup) {
+      stroke(200); // Light gray outline if not assigned to any group
       strokeWeight(1);
     } else if (person.happiness === 0) {
       stroke(0); // Black outline if no connections
@@ -592,6 +750,7 @@ class Scheme {
       stroke(0, 200, 0); // Green outline if assigned to a group and happiness is greater than 0
       strokeWeight(person.happiness);
     }
+
     rect(person.x, person.y, person.w, person.h);
 
     fill(0);
@@ -603,6 +762,27 @@ class Scheme {
       person.x + person.w / 2,
       person.y + person.h / 2
     );
+
+    // Display pin icon for pinned people
+    if (person.pinned) {
+      const pinSize = 8;
+      const pinX = person.x + person.w - pinSize - 2;
+      const pinY = person.y + 2;
+
+      fill(255, 0, 255); // Magenta pin
+      noStroke();
+      ellipse(
+        pinX + pinSize / 2,
+        pinY + pinSize / 2,
+        pinSize,
+        pinSize
+      );
+
+      fill(255);
+      textAlign(CENTER, CENTER);
+      textSize(6);
+      text('P', pinX + pinSize / 2, pinY + pinSize / 2);
+    }
 
     // Display preference rank if person is highlighted
     if (isHighlighted && rank !== null) {
@@ -655,26 +835,18 @@ class Scheme {
   showStatistics() {
     let unassignedCount = this.getUnassignedCount();
     let totalCount = this.people.length;
-    let unassignedPercentage =
-      totalCount > 0
-        ? ((unassignedCount / totalCount) * 100).toFixed(2)
-        : 0;
+    let pinnedCount = this.getPinnedPeople().length;
 
     let unhappyCount = this.getUnhappyCount();
     let peopleWithConnectionsCount =
       this.getPeopleWithConnectionsCount();
-    let unhappyPercentage =
-      peopleWithConnectionsCount > 0
-        ? ((unhappyCount / peopleWithConnectionsCount) * 100).toFixed(
-            2
-          )
-        : 0;
 
     fill(0);
     noStroke();
     textAlign(LEFT, TOP);
     textSize(24);
-    text(`Unassigned: ${unassignedCount}`, 10, height - 60);
+    text(`Unassigned: ${unassignedCount}`, 10, height - 90);
+    text(`Pinned: ${pinnedCount}`, 10, height - 60);
     text(`Unhappy: ${unhappyCount}`, 10, height - 30);
   }
 
@@ -717,7 +889,7 @@ class Scheme {
 
   serialize() {
     return JSON.stringify({
-      version: '2.5.1',
+      version: '2.6.2-pinned',
       title: this.title,
       people: this.people.map((person) => ({
         id: person.id,
@@ -728,6 +900,8 @@ class Scheme {
         happiness: person.happiness,
         x: person.x,
         y: person.y,
+        pinned: person.pinned,
+        pinnedGroupTitle: person.pinnedGroupTitle,
       })),
       groups: this.groups.map((group) => ({
         title: group.title,
@@ -759,6 +933,11 @@ class Scheme {
       person.happiness = personData.happiness;
       person.connections = personData.connections || [];
       person.groupPreferences = personData.groupPreferences || [];
+
+      // Handle pinned assignment data
+      person.pinned = personData.pinned || false;
+      person.pinnedGroupTitle = personData.pinnedGroupTitle || null;
+
       return person;
     });
 
