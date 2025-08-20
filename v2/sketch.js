@@ -350,6 +350,11 @@ function parseGroupsStrings(data) {
   scheme.setGroups(groups);
   console.log(`${scheme.groups.length} groups added`);
   resizeCanvasToFitGroups();
+
+  // Update the group dropdown after groups are loaded
+  if (typeof updateGroupSelect === 'function') {
+    updateGroupSelect();
+  }
 }
 
 function parseConnectionsStrings(data) {
@@ -555,6 +560,7 @@ function keyPressed() {
         groupTitle &&
         scheme.pinPersonToGroup(personId, groupTitle)
       ) {
+        scheme.movePinnedPersonToGroup(personId);
         if (typeof updatePinnedList === 'function') {
           updatePinnedList();
         }

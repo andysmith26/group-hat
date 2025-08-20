@@ -240,28 +240,50 @@
     <script>
       console.log('Enhanced HTML file loaded successfully.');
 
-      // Pinned assignment functions
       function pinPersonToGroup() {
-        const personId = document
+        const personIdsInput = document
           .getElementById('personIdInput')
           .value.trim();
         const groupTitle =
           document.getElementById('groupSelect').value;
 
-        if (!personId || !groupTitle) {
-          alert('Please enter both Person ID and select a Group');
+        if (!personIdsInput || !groupTitle) {
+          alert('Please enter Person ID(s) and select a Group');
           return;
         }
 
-        if (scheme.pinPersonToGroup(personId, groupTitle)) {
-          document.getElementById('personIdInput').value = '';
-          updatePinnedList();
-          alert(`✅ ${personId} pinned to ${groupTitle}`);
-        } else {
-          alert(
-            '❌ Failed to pin person. Check Person ID and Group name.'
-          );
+        // Split by comma or space, filter out empty strings
+        const personIds = personIdsInput
+          .split(/[,\s]+/)
+          .map((id) => id.trim())
+          .filter((id) => id.length > 0);
+
+        let successCount = 0;
+        let failedIds = [];
+
+        for (const personId of personIds) {
+          if (scheme.pinPersonToGroup(personId, groupTitle)) {
+            // Immediately move the person to their pinned group
+            scheme.movePinnedPersonToGroup(personId);
+            successCount++;
+          } else {
+            failedIds.push(personId);
+          }
         }
+
+        // Clear the input
+        document.getElementById('personIdInput').value = '';
+        updatePinnedList();
+
+        // Show results
+        let message = '';
+        if (successCount > 0) {
+          message += `✅ ${successCount} person(s) pinned to ${groupTitle}`;
+        }
+        if (failedIds.length > 0) {
+          message += `\n❌ Failed to pin: ${failedIds.join(', ')}`;
+        }
+        alert(message);
       }
 
       function unpinPerson(personId) {

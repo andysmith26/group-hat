@@ -76,6 +76,47 @@ class Scheme {
     return true;
   }
 
+  // New method to immediately move a pinned person to their group
+  movePinnedPersonToGroup(personId) {
+    const person = this.people.find((p) => p.id === personId);
+    if (!person || !person.pinned) return false;
+
+    // Remove person from any current group
+    for (let group of this.groups) {
+      group.removeMember(person);
+    }
+
+    // Find the pinned group
+    const targetGroup = this.groups.find(
+      (g) => g.title === person.pinnedGroupTitle
+    );
+
+    if (targetGroup) {
+      if (targetGroup.hasAvailableSlot()) {
+        // Calculate position for the person in the group
+        const slotIndex = targetGroup.getNearestEmptySlot(
+          targetGroup.x + 10,
+          targetGroup.y + 40
+        );
+        if (slotIndex !== -1) {
+          targetGroup.members[slotIndex] = person;
+          person.x = targetGroup.x + 10;
+          person.y = targetGroup.y + slotIndex * 40 + 40;
+          person.updateHappiness(targetGroup);
+          console.log(
+            `Successfully moved ${person.displayName} to ${targetGroup.title} at slot ${slotIndex}`
+          );
+          return true;
+        }
+      } else {
+        console.warn(
+          `Pinned group ${targetGroup.title} is full! Cannot place ${person.displayName}`
+        );
+      }
+    }
+    return false;
+  }
+
   unpinPerson(personId) {
     const person = this.people.find((p) => p.id === personId);
     if (person) {
@@ -736,7 +777,7 @@ class Scheme {
     // Special styling for pinned people
     if (person.pinned) {
       stroke(255, 0, 255); // Magenta outline for pinned people
-      strokeWeight(3);
+      strokeWeight(1);
     } else if (!assignedToGroup) {
       stroke(200); // Light gray outline if not assigned to any group
       strokeWeight(1);
@@ -763,8 +804,8 @@ class Scheme {
       person.y + person.h / 2
     );
 
-    // Display pin icon for pinned people
-    if (person.pinned) {
+    // Display pin icon for pinned people - show first letter of group
+    if (person.pinned && person.pinnedGroupTitle) {
       const pinSize = 8;
       const pinX = person.x + person.w - pinSize - 2;
       const pinY = person.y + 2;
@@ -781,7 +822,11 @@ class Scheme {
       fill(255);
       textAlign(CENTER, CENTER);
       textSize(6);
-      text('P', pinX + pinSize / 2, pinY + pinSize / 2);
+      // Show first letter of the pinned group title
+      const firstLetter = person.pinnedGroupTitle
+        .charAt(0)
+        .toUpperCase();
+      text(firstLetter, pinX + pinSize / 2, pinY + pinSize / 2);
     }
 
     // Display preference rank if person is highlighted
