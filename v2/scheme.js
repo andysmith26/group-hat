@@ -239,8 +239,12 @@ class Scheme {
 
   randomAssignment(unassignedPeople) {
     for (let person of unassignedPeople) {
-      let availableGroups = this.groups.filter((group) =>
-        group.hasAvailableSlot()
+      let availableGroups = this.groups.filter(
+        (group) =>
+          group.hasAvailableSlot() &&
+          // when avoidGroupsWithPinned is enabled, skip any group that already has a pinned member
+          (!this.avoidGroupsWithPinned ||
+            !group.members.some((m) => m && m.pinned))
       );
       if (availableGroups.length > 0) {
         let randomGroup = random(availableGroups);
@@ -266,7 +270,15 @@ class Scheme {
     for (let person of unassignedPeople) {
       while (groupIndex < this.groups.length) {
         const group = this.groups[groupIndex];
-        if (group.hasAvailableSlot()) {
+        // respect avoidGroupsWithPinned: if enabled, don't put non-pinned people into groups
+        // that already contain at least one pinned member
+        const groupHasPinned = group.members.some(
+          (m) => m && m.pinned
+        );
+        if (
+          group.hasAvailableSlot() &&
+          (!this.avoidGroupsWithPinned || !groupHasPinned)
+        ) {
           group.addMember(person, group.x + 10, group.y + 40);
           break;
         } else {
@@ -368,7 +380,13 @@ class Scheme {
     // then preference/connection score.
     const placementScore = (person, groupIdx) => {
       const group = this.groups[groupIdx];
+      // don't place into groups that are full or (when configured) contain pinned people
       if (!group.hasAvailableSlot()) return -Infinity;
+      if (
+        this.avoidGroupsWithPinned &&
+        group.members.some((m) => m && m.pinned)
+      )
+        return -Infinity;
       const prefScore = this.useGroupPreferences
         ? this.calculateGroupPreferenceScore(person, group)
         : this.calculateGroupScore(person, group);
@@ -425,7 +443,12 @@ class Scheme {
         chosen.addMember(person, chosen.x + 10, chosen.y + 40);
       } else {
         // fallback: any available slot
-        const any = this.groups.find((g) => g.hasAvailableSlot());
+        const any = this.groups.find(
+          (g) =>
+            g.hasAvailableSlot() &&
+            (!this.avoidGroupsWithPinned ||
+              !g.members.some((m) => m && m.pinned))
+        );
         if (any) any.addMember(person, any.x + 10, any.y + 40);
       }
     }
