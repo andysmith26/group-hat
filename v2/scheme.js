@@ -14,6 +14,10 @@ class Scheme {
     this.history = [];
     this.historyIndex = -1;
     this.maxHistorySize = 50;
+    // Optimization flag: run local optimizer after maximize
+    this.optimizeAfterAssign = false;
+    // If true, do not autoassign people INTO groups that already contain pinned people
+    this.avoidGroupsWithPinned = false;
   }
 
   setRankThreshold(threshold) {
@@ -157,6 +161,19 @@ class Scheme {
       case 'balanced':
         this.balancedAssignment(unassignedPeople);
         break;
+      case 'maximize':
+        this.maximizeHappinessAssignment(unassignedPeople);
+        if (this.optimizeAfterAssign) {
+          // quick local polish
+          this.localOptimize(1000, 5000);
+        }
+        break;
+      case 'minimize-unhappy':
+        this.minimizeUnhappyAssignment(unassignedPeople);
+        if (this.optimizeAfterAssign) {
+          this.localOptimize(1000, 5000);
+        }
+        break;
       default:
         console.error('Unknown algorithm:', algorithm);
     }
@@ -299,6 +316,708 @@ class Scheme {
     }
   }
 
+  // Minimize number of unhappy people while keeping groups balanced
+  minimizeUnhappyAssignment(unassignedPeople) {
+    // Ensure every group is used and sizes are balanced as much as possible,
+    // while prioritizing placements that make people happy.
+    const peopleToPlace = unassignedPeople.slice();
+
+    const numGroups = this.groups.length;
+    const totalPeople = this.people.length;
+
+    // Current sizes
+    const currentSizes = this.groups.map(
+      (g) => g.members.filter((m) => m !== null).length
+    );
+
+    // Compute initial targets using floor/ceil distribution, then respect maxSize
+    const base = Math.floor(totalPeople / numGroups);
+    let remainder = totalPeople % numGroups;
+    let targets = this.groups.map((g, idx) => {
+      let t = base + (remainder > 0 ? 1 : 0);
+      remainder = Math.max(0, remainder - 1);
+      // don't set target below current size
+      t = Math.max(t, currentSizes[idx]);
+      // cap at maxSize
+      t = Math.min(t, g.maxSize);
+      return t;
+    });
+
+    // If sum targets < totalPeople (because of caps), distribute remaining capacity
+    const totalSlots = this.groups.reduce((s, g) => s + g.maxSize, 0);
+    const maxPossible = Math.min(totalPeople, totalSlots);
+    let sumTargets = targets.reduce((s, v) => s + v, 0);
+    // Give extra capacity where possible until we reach maxPossible
+    while (sumTargets < maxPossible) {
+      // find group with most room (maxSize - target)
+      let bestIdx = -1;
+      let bestRoom = 0;
+      for (let i = 0; i < this.groups.length; i++) {
+        const room = this.groups[i].maxSize - targets[i];
+        if (room > bestRoom) {
+          bestRoom = room;
+          bestIdx = i;
+        }
+      }
+      if (bestIdx === -1) break;
+      targets[bestIdx]++;
+      sumTargets++;
+    }
+
+    // Helper: placement score favors making person happy, then groups further below target,
+    // then preference/connection score.
+    const placementScore = (person, groupIdx) => {
+      const group = this.groups[groupIdx];
+      if (!group.hasAvailableSlot()) return -Infinity;
+      const prefScore = this.useGroupPreferences
+        ? this.calculateGroupPreferenceScore(person, group)
+        : this.calculateGroupScore(person, group);
+
+      const currentSize = group.members.filter(
+        (m) => m !== null
+      ).length;
+      const deficit = targets[groupIdx] - currentSize; // positive if below target
+
+      const wouldBeHappy = prefScore > 0 ? 1 : 0;
+
+      // Weight: happiness wins, then larger deficit (prefer groups needing people), then prefScore
+      return (
+        wouldBeHappy * 1000 + Math.max(0, deficit) * 10 + prefScore
+      );
+    };
+
+    // Place more connected people first
+    peopleToPlace.sort(
+      (a, b) => b.connections.length - a.connections.length
+    );
+
+    for (let person of peopleToPlace) {
+      // Prefer groups that are below their target
+      let bestIdx = -1;
+      let bestVal = -Infinity;
+      // First pass: groups with currentSize < target
+      for (let i = 0; i < this.groups.length; i++) {
+        const group = this.groups[i];
+        const currentSize = group.members.filter(
+          (m) => m !== null
+        ).length;
+        if (currentSize >= targets[i]) continue; // skip groups already at/above target
+        const val = placementScore(person, i);
+        if (val > bestVal) {
+          bestVal = val;
+          bestIdx = i;
+        }
+      }
+
+      // Second pass: if none below target, consider any group with space
+      if (bestIdx === -1) {
+        for (let i = 0; i < this.groups.length; i++) {
+          const val = placementScore(person, i);
+          if (val > bestVal) {
+            bestVal = val;
+            bestIdx = i;
+          }
+        }
+      }
+
+      if (bestIdx !== -1 && bestVal > -Infinity) {
+        const chosen = this.groups[bestIdx];
+        chosen.addMember(person, chosen.x + 10, chosen.y + 40);
+      } else {
+        // fallback: any available slot
+        const any = this.groups.find((g) => g.hasAvailableSlot());
+        if (any) any.addMember(person, any.x + 10, any.y + 40);
+      }
+    }
+  }
+
+  // Greedy maximize-happiness assignment
+  maximizeHappinessAssignment(unassignedPeople) {
+    // We'll attempt a greedy placement: for each person, place them in the group
+    // that yields the largest marginal increase in total happiness. Re-evaluate
+    // after each placement because group composition changes.
+
+    // Copy of people list we will mutate
+    const pool = unassignedPeople.slice();
+
+    // Helper to compute total happiness across all people if person were placed in group
+    const marginalScore = (person, group) => {
+      if (!this.canAddToGroup(group)) return -Infinity;
+
+      // compute person's happiness if placed in this group
+      const personHappiness = this.useGroupPreferences
+        ? this.calculateGroupPreferenceScore(person, group)
+        : this.calculateGroupScore(person, group);
+
+      // compute change for existing group members: adding this person may increase
+      // other members' happiness because they may have connections to this person
+      let deltaForOthers = 0;
+      for (let member of group.members) {
+        if (member !== null) {
+          const before = member.happiness;
+          // temporary: if member would consider this person a connection
+          const wouldIncrease =
+            person && member && person.id && member;
+          // Recalculate member happiness including this person
+          const connectionsCount = group.members.filter(
+            (m) =>
+              m !== null &&
+              person &&
+              person.id &&
+              m &&
+              person.connections.includes(m.id)
+          ).length;
+          const newHappiness = this.useGroupPreferences
+            ? member.getPreferenceRank(group.title)
+              ? member.groupPreferences.length -
+                (member.getPreferenceRank(group.title) - 1)
+              : 0
+            : connectionsCount +
+              (person &&
+              member &&
+              person.connections.includes(member.id)
+                ? 1
+                : 0);
+
+          // Normalize newHappiness when using preferences to match calculateHappiness behavior
+          let normalizedNew = newHappiness;
+          if (this.useGroupPreferences) {
+            // if member has no preferences, newHappiness should be computed by connections
+            if (member.groupPreferences.length === 0) {
+              normalizedNew = group.members.filter(
+                (m) => m !== null && member.connections.includes(m.id)
+              ).length;
+            }
+          }
+
+          deltaForOthers += Math.max(-1, normalizedNew - before);
+        }
+      }
+
+      return personHappiness + deltaForOthers;
+    };
+
+    // Greedy loop: pick the best (person, group) pair each iteration
+    while (pool.length > 0) {
+      let bestPair = null;
+      let bestValue = -Infinity;
+
+      for (let i = 0; i < pool.length; i++) {
+        const person = pool[i];
+        for (let group of this.groups) {
+          const score = marginalScore(person, group);
+          if (score > bestValue) {
+            bestValue = score;
+            bestPair = { personIndex: i, group };
+          }
+        }
+      }
+
+      if (bestPair && bestValue > -Infinity) {
+        const person = pool.splice(bestPair.personIndex, 1)[0];
+        bestPair.group.addMember(
+          person,
+          bestPair.group.x + 10,
+          bestPair.group.y + 40
+        );
+        // Update happiness for group members after change
+        bestPair.group.recalculateHappiness();
+      } else {
+        // No feasible placement found (e.g., all groups full) -> stop
+        break;
+      }
+    }
+  }
+
+  // Compute total happiness across all assigned people
+  computeTotalHappiness() {
+    let total = 0;
+    for (let group of this.groups) {
+      for (let person of group.members) {
+        if (person !== null) {
+          // ensure up-to-date
+          person.updateHappiness(group);
+          if (typeof person.happiness === 'number')
+            total += person.happiness;
+        }
+      }
+    }
+    return total;
+  }
+
+  // Local optimizer: try single-person moves and pairwise swaps that improve total happiness
+  // maxPasses: number of full scans with no improvement before stopping
+  // maxEvaluations: safety cap to avoid long runs
+  localOptimize(maxPasses = 10, maxEvaluations = 2000) {
+    let passesWithoutImprovement = 0;
+    let evaluations = 0;
+    let improved = false;
+
+    const tryMove = (person, fromGroup, toGroup) => {
+      if (!toGroup.hasAvailableSlot()) return false;
+
+      // remove person temporarily
+      const fromIndex = fromGroup.members.indexOf(person);
+      fromGroup.members[fromIndex] = null;
+
+      // place person in toGroup
+      const slot = toGroup.getNearestEmptySlot(
+        toGroup.x + 10,
+        toGroup.y + 40
+      );
+      if (slot === -1) {
+        // restore
+        fromGroup.members[fromIndex] = person;
+        return false;
+      }
+      toGroup.members[slot] = person;
+
+      // recalc happiness for affected groups
+      fromGroup.recalculateHappiness();
+      toGroup.recalculateHappiness();
+
+      const newTotal = this.computeTotalHappiness();
+
+      // undo move
+      toGroup.members[slot] = null;
+      fromGroup.members[fromIndex] = person;
+      fromGroup.recalculateHappiness();
+      toGroup.recalculateHappiness();
+
+      return newTotal;
+    };
+
+    const trySwap = (pA, gA, pB, gB) => {
+      // swap pA and pB between groups (allow same group check outside)
+      const idxA = gA.members.indexOf(pA);
+      const idxB = gB.members.indexOf(pB);
+      if (idxA === -1 || idxB === -1) return false;
+
+      if (this.avoidGroupsWithPinned) {
+        // If swapping would move a non-pinned person into a group that contains pinned members, disallow
+        const gAHasPinned = gA.members.some(
+          (m) => m !== null && m.pinned
+        );
+        const gBHasPinned = gB.members.some(
+          (m) => m !== null && m.pinned
+        );
+        // Moving pA into gB: check if gBHasPinned and pA is not pinned
+        if (gBHasPinned && !pA.pinned) return -Infinity;
+        // Moving pB into gA: check if gAHasPinned and pB is not pinned
+        if (gAHasPinned && !pB.pinned) return -Infinity;
+      }
+
+      // perform swap
+      gA.members[idxA] = pB;
+      gB.members[idxB] = pA;
+      gA.recalculateHappiness();
+      gB.recalculateHappiness();
+
+      const newTotal = this.computeTotalHappiness();
+
+      // undo swap
+      gA.members[idxA] = pA;
+      gB.members[idxB] = pB;
+      gA.recalculateHappiness();
+      gB.recalculateHappiness();
+
+      return newTotal;
+    };
+
+    let bestTotal = this.computeTotalHappiness();
+
+    while (
+      passesWithoutImprovement < maxPasses &&
+      evaluations < maxEvaluations
+    ) {
+      improved = false;
+
+      // iterate over all people assigned
+      for (let gIdx = 0; gIdx < this.groups.length; gIdx++) {
+        const group = this.groups[gIdx];
+        for (let pIdx = 0; pIdx < group.members.length; pIdx++) {
+          const person = group.members[pIdx];
+          if (person === null || person.pinned) continue; // skip pinned people
+
+          // Try moving to any other group
+          for (
+            let tgtIdx = 0;
+            tgtIdx < this.groups.length;
+            tgtIdx++
+          ) {
+            if (tgtIdx === gIdx) continue;
+            const targetGroup = this.groups[tgtIdx];
+            if (!this.canAddToGroup(targetGroup)) continue;
+
+            const newTotal = tryMove(person, group, targetGroup);
+            evaluations++;
+            if (newTotal > bestTotal) {
+              // commit move for real
+              group.members[pIdx] = null;
+              const slot = targetGroup.getNearestEmptySlot(
+                targetGroup.x + 10,
+                targetGroup.y + 40
+              );
+              targetGroup.members[slot] = person;
+              // Update positions so drawing doesn't show overlaps
+              group.updateMemberPositions();
+              targetGroup.updateMemberPositions();
+              group.recalculateHappiness();
+              targetGroup.recalculateHappiness();
+              bestTotal = newTotal;
+              improved = true;
+              break; // break targetGroup loop
+            }
+            if (evaluations >= maxEvaluations) break;
+          }
+          if (improved || evaluations >= maxEvaluations) break;
+
+          // Try swaps with members of other groups
+          for (
+            let tgtIdx = 0;
+            tgtIdx < this.groups.length;
+            tgtIdx++
+          ) {
+            if (tgtIdx === gIdx) continue;
+            const otherGroup = this.groups[tgtIdx];
+            for (let otherPerson of otherGroup.members) {
+              if (otherPerson === null || otherPerson.pinned)
+                continue;
+              const newTotal = trySwap(
+                person,
+                group,
+                otherPerson,
+                otherGroup
+              );
+              evaluations++;
+              if (newTotal > bestTotal) {
+                // commit swap
+                const idxA = group.members.indexOf(person);
+                const idxB = otherGroup.members.indexOf(otherPerson);
+                group.members[idxA] = otherPerson;
+                otherGroup.members[idxB] = person;
+                // Update positions after swap to avoid visual overlap
+                group.updateMemberPositions();
+                otherGroup.updateMemberPositions();
+                group.recalculateHappiness();
+                otherGroup.recalculateHappiness();
+                bestTotal = newTotal;
+                improved = true;
+                break;
+              }
+              if (evaluations >= maxEvaluations) break;
+            }
+            if (improved || evaluations >= maxEvaluations) break;
+          }
+          if (improved || evaluations >= maxEvaluations) break;
+        }
+        if (improved || evaluations >= maxEvaluations) break;
+      }
+
+      if (improved) {
+        passesWithoutImprovement = 0;
+      } else {
+        passesWithoutImprovement++;
+      }
+    }
+
+    console.log(
+      `localOptimize finished. evaluations=${evaluations}, totalHappiness=${bestTotal}`
+    );
+    return bestTotal;
+  }
+
+  // Two-phase rebalance: Phase 1 - look for simple swaps/moves that reduce unhappy count.
+  // Phase 2 - rebalance group sizes without reducing total happiness beyond allowedLoss.
+  twoPhaseRebalance(
+    maxPasses = 5,
+    maxEvaluations = 5000,
+    allowedLoss = 0
+  ) {
+    // Phase 1: reduce unhappy count via simple moves/swaps
+    let evaluations = 0;
+    let passes = 0;
+    let improved = false;
+
+    const getUnhappy = () => this.getUnhappyCount();
+
+    // helper to compute imbalance metric: maxSize - minSize
+    const imbalanceMetric = () => {
+      const sizes = this.groups.map(
+        (g) => g.members.filter((m) => m !== null).length
+      );
+      return Math.max(...sizes) - Math.min(...sizes);
+    };
+
+    // Phase 1 loop
+    let unhappy0 = getUnhappy();
+    while (passes < maxPasses && evaluations < maxEvaluations) {
+      improved = false;
+
+      // try single-person moves first
+      for (
+        let gFromIdx = 0;
+        gFromIdx < this.groups.length;
+        gFromIdx++
+      ) {
+        const gFrom = this.groups[gFromIdx];
+        for (let person of gFrom.members) {
+          if (!person || person.pinned) continue;
+          for (
+            let gToIdx = 0;
+            gToIdx < this.groups.length;
+            gToIdx++
+          ) {
+            if (gToIdx === gFromIdx) continue;
+            const gTo = this.groups[gToIdx];
+            if (!this.canAddToGroup(gTo)) continue;
+
+            // perform move simulate
+            const fromIdx = gFrom.members.indexOf(person);
+            const toSlot = gTo.getNearestEmptySlot(
+              gTo.x + 10,
+              gTo.y + 40
+            );
+            if (toSlot === -1) continue;
+
+            // commit temporarily
+            gFrom.members[fromIdx] = null;
+            gTo.members[toSlot] = person;
+            gFrom.recalculateHappiness();
+            gTo.recalculateHappiness();
+            evaluations++;
+
+            const newUnhappy = getUnhappy();
+            if (newUnhappy < unhappy0) {
+              // keep change
+              gFrom.updateMemberPositions();
+              gTo.updateMemberPositions();
+              unhappy0 = newUnhappy;
+              improved = true;
+              break;
+            } else {
+              // revert
+              gTo.members[toSlot] = null;
+              gFrom.members[fromIdx] = person;
+              gFrom.recalculateHappiness();
+              gTo.recalculateHappiness();
+            }
+            if (evaluations >= maxEvaluations) break;
+          }
+          if (improved || evaluations >= maxEvaluations) break;
+        }
+        if (improved || evaluations >= maxEvaluations) break;
+      }
+
+      if (!improved) {
+        // try pairwise swaps
+        for (let i = 0; i < this.groups.length; i++) {
+          for (let pA of this.groups[i].members) {
+            if (!pA || pA.pinned) continue;
+            for (let j = i + 1; j < this.groups.length; j++) {
+              for (let pB of this.groups[j].members) {
+                if (!pB || pB.pinned) continue;
+
+                // swap
+                const idxA = this.groups[i].members.indexOf(pA);
+                const idxB = this.groups[j].members.indexOf(pB);
+                this.groups[i].members[idxA] = pB;
+                this.groups[j].members[idxB] = pA;
+                this.groups[i].recalculateHappiness();
+                this.groups[j].recalculateHappiness();
+                evaluations++;
+
+                const newUnhappy = getUnhappy();
+                if (newUnhappy < unhappy0) {
+                  // keep
+                  this.groups[i].updateMemberPositions();
+                  this.groups[j].updateMemberPositions();
+                  unhappy0 = newUnhappy;
+                  improved = true;
+                  break;
+                } else {
+                  // revert
+                  this.groups[i].members[idxA] = pA;
+                  this.groups[j].members[idxB] = pB;
+                  this.groups[i].recalculateHappiness();
+                  this.groups[j].recalculateHappiness();
+                }
+                if (evaluations >= maxEvaluations) break;
+              }
+              if (improved || evaluations >= maxEvaluations) break;
+            }
+            if (improved || evaluations >= maxEvaluations) break;
+          }
+          if (improved || evaluations >= maxEvaluations) break;
+        }
+      }
+
+      if (!improved) break;
+      passes++;
+    }
+
+    // Phase 2: rebalance without reducing total happiness beyond allowedLoss
+    const baselineTotal = this.computeTotalHappiness();
+    let currentImb = imbalanceMetric();
+    evaluations = 0;
+    passes = 0;
+    improved = false;
+
+    while (passes < maxPasses && evaluations < maxEvaluations) {
+      improved = false;
+
+      // try single-person moves that improve imbalance while preserving happiness
+      for (
+        let gFromIdx = 0;
+        gFromIdx < this.groups.length;
+        gFromIdx++
+      ) {
+        const gFrom = this.groups[gFromIdx];
+        for (let person of gFrom.members) {
+          if (!person || person.pinned) continue;
+          for (
+            let gToIdx = 0;
+            gToIdx < this.groups.length;
+            gToIdx++
+          ) {
+            if (gToIdx === gFromIdx) continue;
+            const gTo = this.groups[gToIdx];
+            if (!gTo.hasAvailableSlot()) continue;
+            if (
+              this.avoidGroupsWithPinned &&
+              gTo.members.some((m) => m && m.pinned)
+            )
+              continue;
+
+            const fromIdx = gFrom.members.indexOf(person);
+            const toSlot = gTo.getNearestEmptySlot(
+              gTo.x + 10,
+              gTo.y + 40
+            );
+            if (toSlot === -1) continue;
+
+            // simulate move
+            gFrom.members[fromIdx] = null;
+            gTo.members[toSlot] = person;
+            gFrom.recalculateHappiness();
+            gTo.recalculateHappiness();
+            evaluations++;
+
+            const newTotal = this.computeTotalHappiness();
+            const newImb = imbalanceMetric();
+            if (
+              newTotal >= baselineTotal - allowedLoss &&
+              newImb < currentImb
+            ) {
+              // commit
+              gFrom.updateMemberPositions();
+              gTo.updateMemberPositions();
+              currentImb = newImb;
+              improved = true;
+              break;
+            } else {
+              // revert
+              gTo.members[toSlot] = null;
+              gFrom.members[fromIdx] = person;
+              gFrom.recalculateHappiness();
+              gTo.recalculateHappiness();
+            }
+            if (evaluations >= maxEvaluations) break;
+          }
+          if (improved || evaluations >= maxEvaluations) break;
+        }
+        if (improved || evaluations >= maxEvaluations) break;
+      }
+
+      if (!improved) {
+        // try swaps
+        for (let i = 0; i < this.groups.length; i++) {
+          for (let pA of this.groups[i].members) {
+            if (!pA || pA.pinned) continue;
+            for (let j = 0; j < this.groups.length; j++) {
+              if (i === j) continue;
+              for (let pB of this.groups[j].members) {
+                if (!pB || pB.pinned) continue;
+                if (this.avoidGroupsWithPinned) {
+                  // disallow if swap would move non-pinned into a pinned group
+                  const gAHasPinned = this.groups[i].members.some(
+                    (m) => m !== null && m.pinned
+                  );
+                  const gBHasPinned = this.groups[j].members.some(
+                    (m) => m !== null && m.pinned
+                  );
+                  if (gAHasPinned && !pB.pinned) continue;
+                  if (gBHasPinned && !pA.pinned) continue;
+                }
+
+                const idxA = this.groups[i].members.indexOf(pA);
+                const idxB = this.groups[j].members.indexOf(pB);
+                // simulate swap
+                this.groups[i].members[idxA] = pB;
+                this.groups[j].members[idxB] = pA;
+                this.groups[i].recalculateHappiness();
+                this.groups[j].recalculateHappiness();
+                evaluations++;
+
+                const newTotal = this.computeTotalHappiness();
+                const newImb = imbalanceMetric();
+                if (
+                  newTotal >= baselineTotal - allowedLoss &&
+                  newImb < currentImb
+                ) {
+                  // commit
+                  this.groups[i].updateMemberPositions();
+                  this.groups[j].updateMemberPositions();
+                  currentImb = newImb;
+                  improved = true;
+                  break;
+                } else {
+                  // revert
+                  this.groups[i].members[idxA] = pA;
+                  this.groups[j].members[idxB] = pB;
+                  this.groups[i].recalculateHappiness();
+                  this.groups[j].recalculateHappiness();
+                }
+                if (evaluations >= maxEvaluations) break;
+              }
+              if (improved || evaluations >= maxEvaluations) break;
+            }
+            if (improved || evaluations >= maxEvaluations) break;
+          }
+          if (improved || evaluations >= maxEvaluations) break;
+        }
+      }
+
+      if (!improved) break;
+      passes++;
+    }
+
+    // Final recalculation and return metrics
+    this.updateAllHappiness();
+    const finalUnhappy = getUnhappy();
+    const finalTotal = this.computeTotalHappiness();
+    const finalImb = imbalanceMetric();
+    console.log(
+      `twoPhaseRebalance done: unhappy ${unhappy0} -> ${finalUnhappy}, total ${finalTotal}, imbalance ${finalImb}`
+    );
+    return { finalUnhappy, finalTotal, finalImb };
+  }
+
+  // Tidy groups: push all non-null members to the top of each group's slots
+  tidyGroups() {
+    for (let group of this.groups) {
+      const members = group.members.filter((m) => m !== null);
+      // fill remaining with nulls up to maxSize
+      while (members.length < group.maxSize) members.push(null);
+      group.members = members;
+      group.updateMemberPositions();
+      group.recalculateHappiness();
+    }
+    this.updateAllHappiness();
+    console.log('tidyGroups: completed');
+    return true;
+  }
+
   calculateGroupPreferenceScore(person, group) {
     const preferenceIndex = person.groupPreferences.indexOf(
       group.title
@@ -345,6 +1064,12 @@ class Scheme {
         (g) => g.members.filter((m) => m !== null).length
       )
     );
+    if (this.avoidGroupsWithPinned) {
+      const hasPinned = group.members.some(
+        (m) => m !== null && m.pinned
+      );
+      if (hasPinned) return false;
+    }
     return (
       currentSize < group.maxSize &&
       (!this.useGroupPreferences

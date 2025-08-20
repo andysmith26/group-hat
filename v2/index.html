@@ -133,6 +133,13 @@
         </div>
         <div>
           <button id="adminToolsBtn">Scary Admin Tools</button>
+          <button
+            id="tidyBtn"
+            aria-label="Tidy Groups"
+            style="margin-left: 10px"
+          >
+            Tidy groups
+          </button>
         </div>
       </div>
 
@@ -173,9 +180,19 @@
 
           <hr />
 
-          <button id="startOverBtn">Start Over</button>
-          <br />
-          <button id="loadTestDataBtn">Load Test Data</button>
+          <div class="admin-actions">
+            <button id="startOverBtn">Start Over</button>
+            <button id="loadTestDataBtn" style="margin-left: 8px">
+              Load Test Data
+            </button>
+            <button
+              id="rebalanceNowBtn"
+              aria-label="Rebalance Now"
+              style="margin-left: 8px"
+            >
+              Rebalance now
+            </button>
+          </div>
           <br />
           <label for="loadPeople">Load people:</label>
           <input
@@ -221,9 +238,26 @@
             <option value="random">Random Assignment</option>
             <!-- <option value="sequential">Fill Groups Sequentially</option> -->
             <option value="balanced">Balanced Happiness</option>
+            <option value="maximize">
+              Maximize Happiness (greedy)
+            </option>
+            <option value="minimize-unhappy">
+              Minimize Unhappy (balance sizes)
+            </option>
           </select>
+          <label style="margin-left: 10px; font-size: 0.9em">
+            <input type="checkbox" id="avoidPinnedGroups" /> Don't
+            autoassign INTO groups with pinned people
+          </label>
           <button id="autoassignBtn" aria-label="Autoassign">
             Autoassign
+          </button>
+          <button
+            id="optimizeNowBtn"
+            aria-label="Optimize Now"
+            style="margin-left: 8px"
+          >
+            Optimize now
           </button>
 
           <p>version 2.6.2-pinned</p>
@@ -331,6 +365,94 @@
           });
         }
       }
+
+      // wire admin/optimizer controls
+      document.addEventListener('DOMContentLoaded', () => {
+        // wire avoidPinnedGroups checkbox
+        const avoidChk = document.getElementById('avoidPinnedGroups');
+        if (avoidChk) {
+          avoidChk.addEventListener('change', () => {
+            if (scheme)
+              scheme.avoidGroupsWithPinned = avoidChk.checked;
+          });
+        }
+        if (avoidChk && scheme)
+          avoidChk.checked = !!scheme.avoidGroupsWithPinned;
+        const optBtn = document.getElementById('optimizeNowBtn');
+        if (optBtn) {
+          optBtn.addEventListener('click', async () => {
+            if (!scheme) {
+              alert('Scheme not loaded');
+              return;
+            }
+            optBtn.disabled = true;
+            optBtn.textContent = 'Optimizing...';
+            // run optimizer with reasonable defaults
+            try {
+              const total = scheme.localOptimize(1000, 5000);
+              // refresh happiness and UI
+              scheme.updateAllHappiness();
+              updatePinnedList();
+              alert(
+                `Optimization complete. Total happiness: ${total}. Unhappy: ${scheme.getUnhappyCount()}`
+              );
+            } catch (e) {
+              console.error(e);
+              alert('Optimization failed: ' + e.message);
+            }
+            optBtn.disabled = false;
+            optBtn.textContent = 'Optimize now';
+          });
+        }
+        // top-bar tidy button
+        const topTidyBtn = document.getElementById('tidyBtn');
+        if (topTidyBtn) {
+          topTidyBtn.addEventListener('click', () => {
+            if (!scheme) {
+              alert('Scheme not loaded');
+              return;
+            }
+            topTidyBtn.disabled = true;
+            topTidyBtn.textContent = 'Tidying...';
+            try {
+              scheme.tidyGroups();
+              scheme.updateAllHappiness();
+              updatePinnedList();
+              alert('Tidy complete');
+            } catch (e) {
+              console.error(e);
+              alert('Tidy failed: ' + e.message);
+            }
+            topTidyBtn.disabled = false;
+            topTidyBtn.textContent = 'Tidy groups';
+          });
+        }
+        const rebalanceBtn =
+          document.getElementById('rebalanceNowBtn');
+        if (rebalanceBtn) {
+          rebalanceBtn.addEventListener('click', () => {
+            if (!scheme) {
+              alert('Scheme not loaded');
+              return;
+            }
+            rebalanceBtn.disabled = true;
+            rebalanceBtn.textContent = 'Rebalancing...';
+            try {
+              const res = scheme.twoPhaseRebalance(5, 5000, 0);
+              scheme.updateAllHappiness();
+              updatePinnedList();
+              alert(
+                `Rebalance complete. Unhappy: ${res.finalUnhappy}, Total happiness: ${res.finalTotal}, Imbalance: ${res.finalImb}`
+              );
+            } catch (e) {
+              console.error(e);
+              alert('Rebalance failed: ' + e.message);
+            }
+            rebalanceBtn.disabled = false;
+            rebalanceBtn.textContent = 'Rebalance now';
+          });
+        }
+      });
 
       // Note: showAdminTools is defined in sketch.js and handles UI updates there
 
