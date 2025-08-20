@@ -324,7 +324,17 @@ function parsePeopleStrings(data) {
 function parseGroupsStrings(data) {
   let groups = [];
   for (let line of data) {
+    // Skip empty lines or lines with only whitespace
+    if (!line || line.trim() === '') continue;
+
     const parts = line.split(',').map((part) => part.trim());
+
+    // Validate that we have both required fields
+    if (parts.length < 2 || !parts[0] || !parts[1]) {
+      console.warn(`Skipping invalid group line: "${line}"`);
+      continue;
+    }
+
     let newGroup = new Group(
       parts[0],
       parts[1],
@@ -340,11 +350,6 @@ function parseGroupsStrings(data) {
   scheme.setGroups(groups);
   console.log(`${scheme.groups.length} groups added`);
   resizeCanvasToFitGroups();
-
-  // Update UI
-  if (typeof updateGroupSelect === 'function') {
-    updateGroupSelect();
-  }
 }
 
 function parseConnectionsStrings(data) {
