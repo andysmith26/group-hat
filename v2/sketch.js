@@ -134,6 +134,13 @@ function showAdminTools() {
   if (typeof updatePinnedList === 'function') {
     updatePinnedList();
   }
+  // refresh imbalance slider display
+  const imbalanceSlider = document.getElementById('imbalanceSlider');
+  const imbalanceValue = document.getElementById('imbalanceValue');
+  if (imbalanceSlider && imbalanceValue && scheme) {
+    imbalanceSlider.value = scheme.maxAllowedImbalance || 0;
+    imbalanceValue.textContent = imbalanceSlider.value;
+  }
 }
 
 function hideAdminTools() {
@@ -469,6 +476,8 @@ function performAutoassign() {
     if (typeof updatePinnedList === 'function') {
       updatePinnedList();
     }
+    if (typeof updateImbalanceDisplay === 'function')
+      updateImbalanceDisplay();
   }
 }
 

@@ -249,6 +249,42 @@
             <input type="checkbox" id="avoidPinnedGroups" /> Don't
             autoassign INTO groups with pinned people
           </label>
+          <!-- Imbalance slider: controls how much optimizer may increase size imbalance -->
+          <div
+            style="
+              margin-top: 8px;
+              display: flex;
+              align-items: center;
+              gap: 10px;
+            "
+          >
+            <label
+              for="imbalanceSlider"
+              style="font-size: 0.9em; white-space: nowrap"
+              >Max allowed imbalance increase:</label
+            >
+            <input
+              type="range"
+              id="imbalanceSlider"
+              min="0"
+              max="10"
+              step="1"
+              value="3"
+            />
+            <span
+              id="imbalanceValue"
+              style="min-width: 20px; text-align: center"
+              >3</span
+            >
+          </div>
+          <div style="margin-top: 8px; font-size: 0.9em; color: #333">
+            Current imbalance (ignoring pinned groups):
+            <span
+              id="currentImbalance"
+              style="font-weight: bold; margin-left: 6px"
+              >0</span
+            >
+          </div>
           <button id="autoassignBtn" aria-label="Autoassign">
             Autoassign
           </button>
@@ -378,6 +414,27 @@
         }
         if (avoidChk && scheme)
           avoidChk.checked = !!scheme.avoidGroupsWithPinned;
+        // imbalance slider wiring
+        const imbalanceSlider =
+          document.getElementById('imbalanceSlider');
+        const imbalanceValue =
+          document.getElementById('imbalanceValue');
+        if (imbalanceSlider) {
+          // initialize from scheme if possible
+          if (
+            scheme &&
+            typeof scheme.maxAllowedImbalance === 'number'
+          ) {
+            imbalanceSlider.value = scheme.maxAllowedImbalance;
+            imbalanceValue.textContent = scheme.maxAllowedImbalance;
+          }
+          imbalanceSlider.addEventListener('input', () => {
+            const v = parseInt(imbalanceSlider.value, 10);
+            imbalanceValue.textContent = v;
+            if (scheme) scheme.maxAllowedImbalance = v;
+            updateImbalanceDisplay();
+          });
+        }
         const optBtn = document.getElementById('optimizeNowBtn');
         if (optBtn) {
           optBtn.addEventListener('click', async () => {
@@ -393,6 +450,7 @@
               // refresh happiness and UI
               scheme.updateAllHappiness();
               updatePinnedList();
+              updateImbalanceDisplay();
               alert(
                 `Optimization complete. Total happiness: ${total}. Unhappy: ${scheme.getUnhappyCount()}`
               );
@@ -418,6 +476,7 @@
               scheme.tidyGroups();
               scheme.updateAllHappiness();
               updatePinnedList();
+              updateImbalanceDisplay();
               alert('Tidy complete');
             } catch (e) {
               console.error(e);
@@ -441,6 +500,7 @@
               const res = scheme.twoPhaseRebalance(5, 5000, 0);
               scheme.updateAllHappiness();
               updatePinnedList();
+              updateImbalanceDisplay();
               alert(
                 `Rebalance complete. Unhappy: ${res.finalUnhappy}, Total happiness: ${res.finalTotal}, Imbalance: ${res.finalImb}`
               );
@@ -455,6 +515,19 @@
       });
 
       // Note: showAdminTools is defined in sketch.js and handles UI updates there
+
+      function updateImbalanceDisplay() {
+        const el = document.getElementById('currentImbalance');
+        if (!el) return;
+        if (
+          scheme &&
+          typeof scheme.getImbalanceIgnoringPinned === 'function'
+        ) {
+          el.textContent = scheme.getImbalanceIgnoringPinned();
+        } else {
+          el.textContent = '0';
+        }
+      }
 
       // Add keyboard shortcut for pinning (Ctrl+P)
       function keyPressed() {

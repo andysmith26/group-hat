@@ -18,6 +18,8 @@ class Scheme {
     this.optimizeAfterAssign = false;
     // If true, do not autoassign people INTO groups that already contain pinned people
     this.avoidGroupsWithPinned = false;
+    // maximum allowed absolute size-imbalance (maxSize - minSize) when optimizing
+    this.maxAllowedImbalance = 3;
   }
 
   setRankThreshold(threshold) {
@@ -576,6 +578,18 @@ class Scheme {
     let evaluations = 0;
     let improved = false;
 
+    const imbalanceMetric = () => {
+      // consider only groups that do NOT contain any pinned members
+      const relevant = this.groups.filter(
+        (g) => !g.members.some((m) => m !== null && m.pinned)
+      );
+      if (relevant.length === 0) return 0;
+      const sizes = relevant.map(
+        (g) => g.members.filter((m) => m !== null).length
+      );
+      return Math.max(...sizes) - Math.min(...sizes);
+    };
+
     const tryMove = (person, fromGroup, toGroup) => {
       if (!toGroup.hasAvailableSlot()) return false;
 
@@ -600,6 +614,7 @@ class Scheme {
       toGroup.recalculateHappiness();
 
       const newTotal = this.computeTotalHappiness();
+      const newImb = imbalanceMetric();
 
       // undo move
       toGroup.members[slot] = null;
@@ -607,7 +622,7 @@ class Scheme {
       fromGroup.recalculateHappiness();
       toGroup.recalculateHappiness();
 
-      return newTotal;
+      return { newTotal, newImb };
     };
 
     const trySwap = (pA, gA, pB, gB) => {
@@ -637,6 +652,7 @@ class Scheme {
       gB.recalculateHappiness();
 
       const newTotal = this.computeTotalHappiness();
+      const newImb = imbalanceMetric();
 
       // undo swap
       gA.members[idxA] = pA;
@@ -644,10 +660,11 @@ class Scheme {
       gA.recalculateHappiness();
       gB.recalculateHappiness();
 
-      return newTotal;
+      return { newTotal, newImb };
     };
 
     let bestTotal = this.computeTotalHappiness();
+    let currentImb = imbalanceMetric();
 
     while (
       passesWithoutImprovement < maxPasses &&
@@ -672,8 +689,13 @@ class Scheme {
             const targetGroup = this.groups[tgtIdx];
             if (!this.canAddToGroup(targetGroup)) continue;
 
-            const newTotal = tryMove(person, group, targetGroup);
+            const mv = tryMove(person, group, targetGroup);
             evaluations++;
+            if (!mv || mv.newTotal === undefined) continue;
+            // skip moves that would exceed absolute allowed imbalance
+            if (mv.newImb > this.maxAllowedImbalance) continue;
+            const newTotal = mv.newTotal;
+            const newImb = mv.newImb;
             if (newTotal > bestTotal) {
               // commit move for real
               group.members[pIdx] = null;
@@ -688,6 +710,7 @@ class Scheme {
               group.recalculateHappiness();
               targetGroup.recalculateHappiness();
               bestTotal = newTotal;
+              currentImb = newImb;
               improved = true;
               break; // break targetGroup loop
             }
@@ -706,13 +729,18 @@ class Scheme {
             for (let otherPerson of otherGroup.members) {
               if (otherPerson === null || otherPerson.pinned)
                 continue;
-              const newTotal = trySwap(
+              const sw = trySwap(
                 person,
                 group,
                 otherPerson,
                 otherGroup
               );
               evaluations++;
+              if (!sw || sw.newTotal === undefined) continue;
+              // skip swaps that would exceed absolute allowed imbalance
+              if (sw.newImb > this.maxAllowedImbalance) continue;
+              const newTotal = sw.newTotal;
+              const newImb = sw.newImb;
               if (newTotal > bestTotal) {
                 // commit swap
                 const idxA = group.members.indexOf(person);
@@ -725,6 +753,7 @@ class Scheme {
                 group.recalculateHappiness();
                 otherGroup.recalculateHappiness();
                 bestTotal = newTotal;
+                currentImb = newImb;
                 improved = true;
                 break;
               }
@@ -764,9 +793,14 @@ class Scheme {
 
     const getUnhappy = () => this.getUnhappyCount();
 
-    // helper to compute imbalance metric: maxSize - minSize
+    // helper to compute imbalance metric: maxSize - minSize,
+    // but ignore groups that contain at least one pinned member
     const imbalanceMetric = () => {
-      const sizes = this.groups.map(
+      const relevant = this.groups.filter(
+        (g) => !g.members.some((m) => m !== null && m.pinned)
+      );
+      if (relevant.length === 0) return 0;
+      const sizes = relevant.map(
         (g) => g.members.filter((m) => m !== null).length
       );
       return Math.max(...sizes) - Math.min(...sizes);
@@ -1232,6 +1266,18 @@ class Scheme {
   getUnhappyCount() {
     return this.people.filter((person) => person.happiness === -1)
       .length;
+  }
+
+  // Public helper: compute size imbalance (max - min) ignoring groups that contain pinned members
+  getImbalanceIgnoringPinned() {
+    const relevant = this.groups.filter(
+      (g) => !g.members.some((m) => m !== null && m.pinned)
+    );
+    if (relevant.length === 0) return 0;
+    const sizes = relevant.map(
+      (g) => g.members.filter((m) => m !== null).length
+    );
+    return Math.max(...sizes) - Math.min(...sizes);
   }
 
   getPeopleWithConnectionsCount() {
