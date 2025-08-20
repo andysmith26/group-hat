@@ -200,17 +200,70 @@ function loadSchemeFromFile(event) {
   if (file) {
     const reader = new FileReader();
     reader.onload = (e) => {
-      const jsonString = e.target.result;
-      scheme = Scheme.deserialize(jsonString);
-      resizeCanvasToFitGroups();
-      console.log('scheme file successfully read.');
+      try {
+        const jsonString = e.target.result;
 
-      // Update UI if functions exist
-      if (typeof updateGroupSelect === 'function') {
-        updateGroupSelect();
-      }
-      if (typeof updatePinnedList === 'function') {
-        updatePinnedList();
+        // Parse the JSON to check version compatibility
+        const jsonObj = JSON.parse(jsonString);
+
+        // Check if this is a scheme file with the expected structure
+        if (!jsonObj.version || !jsonObj.people || !jsonObj.groups) {
+          alert(
+            'Invalid scheme file format. Please select a valid scheme file.'
+          );
+          return;
+        }
+
+        // Deserialize the scheme
+        scheme = Scheme.deserialize(jsonString);
+
+        // Clean up any invalid pinned assignments
+        if (
+          typeof scheme.cleanupInvalidPinnedAssignments === 'function'
+        ) {
+          const cleanedCount =
+            scheme.cleanupInvalidPinnedAssignments();
+          if (cleanedCount > 0) {
+            alert(
+              `Note: ${cleanedCount} invalid pinned assignment(s) were removed during loading.`
+            );
+          }
+        }
+
+        // Resize canvas to fit groups
+        resizeCanvasToFitGroups();
+
+        console.log('Scheme file successfully loaded.');
+        console.log(
+          `Loaded ${scheme.people.length} people and ${scheme.groups.length} groups`
+        );
+        console.log(
+          `${scheme.getPinnedPeople().length} people are pinned`
+        );
+
+        // Update UI if functions exist
+        if (typeof updateGroupSelect === 'function') {
+          updateGroupSelect();
+        }
+        if (typeof updatePinnedList === 'function') {
+          updatePinnedList();
+        }
+
+        // Show summary of loaded data
+        const unassignedCount = scheme.getUnassignedCount();
+        const pinnedCount = scheme.getPinnedPeople().length;
+        const unhappyCount = scheme.getUnhappyCount();
+
+        console.log(
+          `Summary: ${unassignedCount} unassigned, ${pinnedCount} pinned, ${unhappyCount} unhappy`
+        );
+      } catch (error) {
+        console.error('Error loading scheme file:', error);
+        alert(
+          'Error loading scheme file: ' +
+            error.message +
+            '\n\nPlease check the file and try again.'
+        );
       }
     };
     reader.readAsText(file);

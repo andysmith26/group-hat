@@ -967,6 +967,7 @@ class Scheme {
 
     scheme.useGroupPreferences = obj.useGroupPreferences || false;
 
+    // First, create people without connections or happiness
     const deserializedPeople = obj.people.map((personData) => {
       const person = new Person(
         personData.id,
@@ -975,19 +976,23 @@ class Scheme {
       );
       person.x = personData.x;
       person.y = personData.y;
-      person.happiness = personData.happiness;
+      // Don't set happiness yet - it will be calculated later
+      person.happiness = 0;
+      // Store connections and preferences for later
       person.connections = personData.connections || [];
       person.groupPreferences = personData.groupPreferences || [];
 
-      // Handle pinned assignment data
+      // Store pinned data for later
       person.pinned = personData.pinned || false;
       person.pinnedGroupTitle = personData.pinnedGroupTitle || null;
 
       return person;
     });
 
-    scheme.setPeople(deserializedPeople);
+    // Set people without validation first
+    scheme.people = deserializedPeople;
 
+    // Create groups and populate members
     const deserializedGroups = obj.groups.map((groupData) => {
       const group = new Group(
         groupData.title,
@@ -995,18 +1000,130 @@ class Scheme {
         groupData.x,
         groupData.y
       );
+
+      // Map member IDs to actual person objects
       group.members = groupData.members.map((memberId) => {
         if (memberId !== null) {
-          const member = scheme.getPersonById(memberId)[0];
+          const member = scheme.people.find((p) => p.id === memberId);
           return member || null;
         } else {
           return null;
         }
       });
+
       return group;
     });
 
-    scheme.setGroups(deserializedGroups);
+    // Set groups
+    scheme.groups = deserializedGroups;
+
+    // Now validate pinned assignments - groups exist now
+    scheme.people.forEach((person) => {
+      if (person.pinned && person.pinnedGroupTitle) {
+        const pinnedGroup = scheme.groups.find(
+          (g) => g.title === person.pinnedGroupTitle
+        );
+        if (!pinnedGroup) {
+          console.warn(
+            `Person ${person.id} was pinned to non-existent group ${person.pinnedGroupTitle}. Unpinning.`
+          );
+          person.pinned = false;
+          person.pinnedGroupTitle = null;
+        }
+      }
+    });
+
+    // Finally, recalculate all happiness values based on actual group assignments
+    scheme.groups.forEach((group) => {
+      group.members.forEach((member) => {
+        if (member !== null) {
+          member.updateHappiness(group);
+        }
+      });
+    });
+
+    // Skip strict validation during load - happiness will be recalculated
+    console.log(
+      'Scheme loaded successfully. Groups:',
+      scheme.groups.length,
+      'People:',
+      scheme.people.length
+    );
+
     return scheme;
+  }
+
+  cleanupInvalidPinnedAssignments() {
+    let cleanedCount = 0;
+
+    this.people.forEach((person) => {
+      if (person.pinned && person.pinnedGroupTitle) {
+        const pinnedGroup = this.groups.find(
+          (g) => g.title === person.pinnedGroupTitle
+        );
+
+        if (!pinnedGroup) {
+          console.warn(
+            `Cleaning up invalid pin: ${person.displayName} was pinned to non-existent group "${person.pinnedGroupTitle}"`
+          );
+          person.pinned = false;
+          person.pinnedGroupTitle = null;
+          cleanedCount++;
+        } else {
+          // Check if the person is actually in their pinned group
+          const isInGroup = pinnedGroup.members.includes(person);
+
+          if (!isInGroup) {
+            console.warn(
+              `Person ${person.displayName} is marked as pinned to ${person.pinnedGroupTitle} but is not in that group`
+            );
+
+            // Try to place them in their pinned group if there's space
+            if (pinnedGroup.hasAvailableSlot()) {
+              // Remove from any current group first
+              this.groups.forEach((group) => {
+                if (group !== pinnedGroup) {
+                  group.removeMember(person);
+                }
+              });
+
+              // Add to pinned group
+              const slotIndex = pinnedGroup.getNearestEmptySlot(
+                pinnedGroup.x + 10,
+                pinnedGroup.y + 40
+              );
+
+              if (slotIndex !== -1) {
+                pinnedGroup.members[slotIndex] = person;
+                person.x = pinnedGroup.x + 10;
+                person.y = pinnedGroup.y + slotIndex * 40 + 40;
+                person.updateHappiness(pinnedGroup);
+                console.log(
+                  `Restored ${person.displayName} to their pinned group ${pinnedGroup.title}`
+                );
+              }
+            } else {
+              console.warn(
+                `Cannot restore ${person.displayName} to pinned group ${pinnedGroup.title} - group is full`
+              );
+              person.pinned = false;
+              person.pinnedGroupTitle = null;
+              cleanedCount++;
+            }
+          }
+        }
+      }
+    });
+
+    if (cleanedCount > 0) {
+      console.log(
+        `Cleaned up ${cleanedCount} invalid pinned assignments`
+      );
+    }
+
+    // Recalculate all happiness after cleanup
+    this.updateAllHappiness();
+
+    return cleanedCount;
   }
 }
