@@ -143,156 +143,277 @@
         </div>
       </div>
 
-      <!-- Data Input Section -->
-      <div
-        style="
-          padding: 10px;
-          background-color: #f9f9f9;
-          border-bottom: 1px solid #ccc;
-        "
-      >
-        <h3 style="margin: 5px 0">
-          Load Data (Copy/Paste from Google Sheets)
-        </h3>
-
-        <div style="display: flex; gap: 20px; margin-bottom: 10px">
-          <div style="flex: 1">
-            <label
-              style="
-                font-weight: bold;
-                display: block;
-                margin-bottom: 5px;
-              "
-            >
-              Preferences Data (include headers):
-            </label>
-            <textarea
-              id="preferencesData"
-              rows="8"
-              style="
-                width: 100%;
-                font-family: monospace;
-                font-size: 11px;
-              "
-              placeholder="Paste from Google Sheets: Timestamp, Email, Name, Club columns..."
-            ></textarea>
-          </div>
-
-          <div style="flex: 1">
-            <label
-              style="
-                font-weight: bold;
-                display: block;
-                margin-bottom: 5px;
-              "
-            >
-              Gender Data (include headers):
-            </label>
-            <textarea
-              id="genderData"
-              rows="8"
-              style="
-                width: 100%;
-                font-family: monospace;
-                font-size: 11px;
-              "
-              placeholder="Paste from Google Sheets: GENDER, FIRST, LAST, EMAIL"
-            ></textarea>
-          </div>
-        </div>
-
-        <button
-          id="parseDataBtn"
-          style="
-            background-color: #4caf50;
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            cursor: pointer;
-            font-size: 14px;
-          "
-        >
-          Parse & Load Data
-        </button>
-
-        <span
-          id="parseStatus"
-          style="margin-left: 15px; font-weight: bold"
-        ></span>
-      </div>
-
-      <!-- Mode Toggle Section -->
-      <div
-        style="
-          padding: 10px;
-          background-color: #ffe6cc;
-          border-bottom: 2px solid #ff9933;
-        "
-      >
-        <div style="display: flex; align-items: center; gap: 15px">
-          <span style="font-weight: bold; font-size: 16px"
-            >Mode:</span
-          >
-          <button
-            id="modeToggleBtn"
-            style="
-              background-color: #ff9933;
-              color: white;
-              padding: 8px 20px;
-              border: none;
-              cursor: pointer;
-              font-size: 14px;
-              font-weight: bold;
-            "
-          >
-            🎯 ClubHat (using preferences)
-          </button>
-          <span
-            id="modeDescription"
-            style="font-style: italic; color: #666"
-          >
-            Sorting students by club preferences
-          </span>
-        </div>
-      </div>
-
       <div id="adminToolsModal" class="modal">
         <div class="modal-content">
           <span class="close">&times;</span>
 
-          <!-- Pinned Assignment Controls -->
-          <div class="pinned-controls">
-            <h4>📌 Pinned Assignments</h4>
-            <div class="pin-form">
-              <input
-                type="text"
-                id="personIdInput"
-                placeholder="Person ID (e.g., johnma)"
-              />
-              <select id="groupSelect">
-                <option value="">Select Group...</option>
-              </select>
-              <button onclick="pinPersonToGroup()">
-                Pin to Group
+          <h2 style="margin-top: 0">Scary Admin Tools</h2>
+
+          <!-- Section 1: Data Loading -->
+          <details open>
+            <summary
+              style="
+                font-weight: bold;
+                font-size: 16px;
+                cursor: pointer;
+                margin: 15px 0;
+              "
+            >
+              📥 Load Data
+            </summary>
+            <div
+              style="
+                padding: 10px;
+                background-color: #f9f9f9;
+                border: 1px solid #ccc;
+                margin-bottom: 15px;
+              "
+            >
+              <!-- Data Input Section -->
+              <div
+                style="
+                  padding: 10px;
+                  background-color: #f9f9f9;
+                  border-bottom: 1px solid #ccc;
+                "
+              >
+                <h3 style="margin: 5px 0">
+                  Load Data (Copy/Paste from Google Sheets)
+                </h3>
+
+                <div
+                  style="
+                    display: flex;
+                    gap: 20px;
+                    margin-bottom: 10px;
+                  "
+                >
+                  <div style="flex: 1">
+                    <label
+                      style="
+                        font-weight: bold;
+                        display: block;
+                        margin-bottom: 5px;
+                      "
+                    >
+                      Preferences Data (include headers):
+                    </label>
+                    <textarea
+                      id="preferencesData"
+                      rows="8"
+                      style="
+                        width: 100%;
+                        font-family: monospace;
+                        font-size: 11px;
+                      "
+                      placeholder="Paste from Google Sheets: Timestamp, Email, Name, Club columns..."
+                    ></textarea>
+                  </div>
+
+                  <div style="flex: 1">
+                    <label
+                      style="
+                        font-weight: bold;
+                        display: block;
+                        margin-bottom: 5px;
+                      "
+                    >
+                      Gender Data (include headers):
+                    </label>
+                    <textarea
+                      id="genderData"
+                      rows="8"
+                      style="
+                        width: 100%;
+                        font-family: monospace;
+                        font-size: 11px;
+                      "
+                      placeholder="Paste from Google Sheets: GENDER, FIRST, LAST, EMAIL"
+                    ></textarea>
+                  </div>
+                </div>
+
+                <button
+                  id="parseDataBtn"
+                  style="
+                    background-color: #4caf50;
+                    color: white;
+                    padding: 10px 20px;
+                    border: none;
+                    cursor: pointer;
+                    font-size: 14px;
+                  "
+                >
+                  Parse & Load Data
+                </button>
+
+                <span
+                  id="parseStatus"
+                  style="margin-left: 15px; font-weight: bold"
+                ></span>
+              </div>
+            </div>
+          </details>
+
+          <!-- Section 2: Mode Selection -->
+          <details open>
+            <summary
+              style="
+                font-weight: bold;
+                font-size: 16px;
+                cursor: pointer;
+                margin: 15px 0;
+              "
+            >
+              🎯 Mode Selection
+            </summary>
+            <div
+              style="
+                padding: 10px;
+                background-color: #ffe6cc;
+                border: 1px solid #ff9933;
+                margin-bottom: 15px;
+              "
+            >
+              <!-- Mode Toggle Section -->
+              <div
+                style="
+                  padding: 10px;
+                  background-color: #ffe6cc;
+                  border-bottom: 2px solid #ff9933;
+                "
+              >
+                <div
+                  style="
+                    display: flex;
+                    align-items: center;
+                    gap: 15px;
+                  "
+                >
+                  <span style="font-weight: bold; font-size: 16px"
+                    >Mode:</span
+                  >
+                  <button
+                    id="modeToggleBtn"
+                    style="
+                      background-color: #ff9933;
+                      color: white;
+                      padding: 8px 20px;
+                      border: none;
+                      cursor: pointer;
+                      font-size: 14px;
+                      font-weight: bold;
+                    "
+                  >
+                    🎯 ClubHat (using preferences)
+                  </button>
+                  <span
+                    id="modeDescription"
+                    style="font-style: italic; color: #666"
+                  >
+                    Sorting students by club preferences
+                  </span>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <!-- Section 3: Group Max Sizes -->
+          <details open>
+            <summary
+              style="
+                font-weight: bold;
+                font-size: 16px;
+                cursor: pointer;
+                margin: 15px 0;
+              "
+            >
+              📊 Group Capacity Settings
+            </summary>
+            <div
+              style="
+                padding: 10px;
+                background-color: #e6f3ff;
+                border: 1px solid #66b3ff;
+                margin-bottom: 15px;
+              "
+            >
+              <div
+                id="groupMaxControls"
+                style="
+                  display: grid;
+                  grid-template-columns: 1fr 80px 60px;
+                  gap: 8px;
+                  align-items: center;
+                "
+              >
+                <!-- Will be populated by JavaScript -->
+              </div>
+              <button
+                onclick="applyGroupMaxChanges()"
+                style="
+                  margin-top: 10px;
+                  background-color: #4caf50;
+                  color: white;
+                  padding: 8px 16px;
+                  border: none;
+                  cursor: pointer;
+                "
+              >
+                Apply Changes
               </button>
             </div>
-            <div class="legend">
-              <div class="legend-item">
-                <span class="pin-icon">📌</span> Pinned people have
-                magenta borders and a "P" icon
-              </div>
-              <div class="legend-item">
-                ⚡ Pinned assignments happen BEFORE auto-assignment
-              </div>
-              <div class="legend-item">
-                ⚠️ If pinned group is full, assignment will fail
+          </details>
+
+          <!-- Section 4: Pinned Assignments (EXISTING) -->
+          <details>
+            <summary
+              style="
+                font-weight: bold;
+                font-size: 16px;
+                cursor: pointer;
+                margin: 15px 0;
+              "
+            >
+              📌 Pinned Assignments
+            </summary>
+            <div class="pinned-controls">
+              <!-- Pinned Assignment Controls -->
+              <div class="pinned-controls">
+                <h4>📌 Pinned Assignments</h4>
+                <div class="pin-form">
+                  <input
+                    type="text"
+                    id="personIdInput"
+                    placeholder="Person ID (e.g., johnma)"
+                  />
+                  <select id="groupSelect">
+                    <option value="">Select Group...</option>
+                  </select>
+                  <button onclick="pinPersonToGroup()">
+                    Pin to Group
+                  </button>
+                </div>
+                <div class="legend">
+                  <div class="legend-item">
+                    <span class="pin-icon">📌</span> Pinned people
+                    have magenta borders and a "P" icon
+                  </div>
+                  <div class="legend-item">
+                    ⚡ Pinned assignments happen BEFORE
+                    auto-assignment
+                  </div>
+                  <div class="legend-item">
+                    ⚠️ If pinned group is full, assignment will fail
+                  </div>
+                </div>
+                <div id="pinnedList" class="pinned-list"></div>
               </div>
             </div>
-            <div id="pinnedList" class="pinned-list"></div>
-          </div>
+          </details>
 
+          <!-- Section 5: Advanced Operations (EXISTING) -->
           <hr />
-
           <div class="admin-actions">
             <button id="startOverBtn">Start Over</button>
             <button id="loadTestDataBtn" style="margin-left: 8px">
