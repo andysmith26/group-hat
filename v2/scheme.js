@@ -1493,10 +1493,43 @@ class Scheme {
 
   showGroups() {
     for (let group of this.groups) {
+      // Determine fill color based on hover state
       if (group.highlighted) {
-        fill(0, 0, 255, 100); // Blue highlight for space key
+        fill(0, 0, 255, 100); // Blue highlight for CTRL key
       } else if (this.currentGroups.includes(group.title)) {
-        fill(255, 255, 0, 100); // Yellow highlight for currentGroups
+        // Get the preference rank for this group
+        const rank = this.currentHover
+          ? this.currentHover.getPreferenceRank(group.title)
+          : null;
+
+        if (rank === 1) {
+          fill(0, 200, 0, 150); // Dark green for 1st choice
+        } else if (rank === 2) {
+          fill(100, 220, 100, 130); // Medium green for 2nd choice
+        } else if (rank === 3) {
+          fill(150, 235, 150, 110); // Light green for 3rd choice
+        } else if (rank === 4) {
+          fill(200, 245, 200, 90); // Very light green for 4th choice
+        } else {
+          fill(255, 255, 0, 100); // Yellow for other ranks
+        }
+
+        // Draw rank label
+        if (rank && rank <= 4) {
+          push();
+          fill(0);
+          noStroke();
+          textAlign(RIGHT, TOP);
+          textSize(14);
+          textStyle(BOLD);
+          text(
+            `${rank}${this.getOrdinalSuffix(rank)}`,
+            group.x + group.w - 5,
+            group.y + 2
+          );
+          textStyle(NORMAL);
+          pop();
+        }
       } else {
         fill(255); // White for no highlight
       }
@@ -1570,18 +1603,44 @@ class Scheme {
       }
 
       // Determine fill color based on state
+      let personFill;
       if (person === this.currentHover) {
-        fill(255, 255, 0); // Yellow for hover
+        personFill = color(255, 255, 0); // Yellow for hover
       } else if (this.currentConnectionIds.includes(person.id)) {
-        fill(0, 255, 0); // Green for connections
-      } else if (person.highlighted) {
-        fill(100, 100, 255); // Blue for highlighted
+        personFill = color(0, 255, 0); // Green for connections
+      } else if (
+        person.highlighted ||
+        (this.highlightedGroup &&
+          person.groupPreferences.includes(
+            this.highlightedGroup.title
+          ))
+      ) {
+        // When CTRL hovering a group, shade people by their preference rank
+        if (this.highlightedGroup) {
+          const rank = person.getPreferenceRank(
+            this.highlightedGroup.title
+          );
+          if (rank === 1) {
+            personFill = color(0, 180, 0); // Dark green
+          } else if (rank === 2) {
+            personFill = color(80, 200, 80); // Medium green
+          } else if (rank === 3) {
+            personFill = color(140, 220, 140); // Light green
+          } else if (rank === 4) {
+            personFill = color(180, 235, 180); // Very light green
+          } else {
+            personFill = color(100, 100, 255); // Blue for highlighted without rank
+          }
+        } else {
+          personFill = color(100, 100, 255); // Blue for highlighted
+        }
       } else if (person.pinned) {
-        fill(255, 200, 255); // Light pink for pinned
+        personFill = color(255, 200, 255); // Light pink for pinned
       } else {
-        fill(200); // Gray default
+        personFill = color(200); // Gray default
       }
 
+      fill(personFill);
       stroke(0);
       strokeWeight(1);
       rect(person.x, person.y, person.w, person.h);
@@ -1983,6 +2042,12 @@ class Scheme {
     }
 
     return { preferencesData, clubNames };
+  }
+
+  // Add helper method to Scheme class
+  getOrdinalSuffix(num) {
+    const suffixes = { 1: 'st', 2: 'nd', 3: 'rd' };
+    return suffixes[num] || 'th';
   }
 
   // Parse gender data from Google Sheets paste

@@ -58,11 +58,16 @@ function draw() {
 
   if (keyIsDown(SHIFT) || mouseIsPressed) {
     scheme.handleHover(mouseX, mouseY);
+
+    // Show tooltip for the hovered person
+    if (scheme.currentHover && keyIsDown(SHIFT)) {
+      showPersonTooltip(scheme.currentHover);
+    }
   } else {
     scheme.clearHover();
   }
 
-  // highlight people who chose the group is space is pressed and nothing else.
+  // highlight people who chose the group if CTRL is pressed
   if (keyIsDown(CONTROL) && !(keyIsDown(SHIFT) || mouseIsPressed)) {
     scheme.highlightGroupAndPeople(mouseX, mouseY);
   } else {
@@ -96,6 +101,54 @@ function showPinnedInfo(person) {
     infoX + 5,
     infoY + infoHeight / 2
   );
+}
+
+function showPersonTooltip(person) {
+  fill(255, 255, 230, 240); // Light yellow background
+  stroke(100);
+  strokeWeight(2);
+
+  const padding = 10;
+  const lineHeight = 16;
+
+  // Calculate tooltip size based on content
+  const lines = [
+    `Name: ${person.displayName}`,
+    `Happiness: ${person.happiness}`,
+    `Preferences: ${
+      person.groupPreferences.length > 0
+        ? person.groupPreferences.slice(0, 4).join(', ')
+        : 'None'
+    }`,
+  ];
+
+  const maxWidth =
+    Math.max(...lines.map((line) => textWidth(line))) + padding * 2;
+  const tooltipHeight = lines.length * lineHeight + padding * 2;
+
+  // Position tooltip near mouse, but keep it on screen
+  let tooltipX = mouseX + 20;
+  let tooltipY = mouseY - 20;
+
+  if (tooltipX + maxWidth > width) tooltipX = mouseX - maxWidth - 20;
+  if (tooltipY < 0) tooltipY = 20;
+  if (tooltipY + tooltipHeight > height)
+    tooltipY = height - tooltipHeight - 20;
+
+  rect(tooltipX, tooltipY, maxWidth, tooltipHeight, 5);
+
+  fill(0);
+  noStroke();
+  textAlign(LEFT, TOP);
+  textSize(12);
+
+  lines.forEach((line, i) => {
+    text(
+      line,
+      tooltipX + padding,
+      tooltipY + padding + i * lineHeight
+    );
+  });
 }
 
 function loadTestData() {
