@@ -54,3 +54,41 @@ canvas {
   text-decoration: none;
   cursor: pointer;
 }
+
+/* Collapsible sections */
+details summary {
+  user-select: none;
+  padding: 8px;
+  background-color: #f0f0f0;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+details summary:hover {
+  background-color: #e0e0e0;
+}
+
+details[open] summary {
+  margin-bottom: 12px;
+  border-bottom: 2px solid #666;
+}
+
+/* Group max controls grid */
+#groupMaxControls {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+#groupMaxControls input[type="number"] {
+  padding: 4px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+}
+
+/* Make modal wider for new content */
+.modal-content {
+  width: 90%;
+  max-width: 900px;
+  max-height: 90vh;
+  overflow-y: auto;
+}

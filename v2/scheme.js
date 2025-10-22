@@ -1436,18 +1436,230 @@ class Scheme {
   }
 
   ensureDataQuality() {
-    const { errors, warnings } = this.validateDataQuality();
+    let warnings = [];
+    let errors = [];
 
+    // Check for duplicate IDs and keep only the latest occurrence
+    const idCounts = new Map();
+    const duplicateIds = new Set();
+
+    this.people.forEach((person, index) => {
+      if (person.id) {
+        if (idCounts.has(person.id)) {
+          duplicateIds.add(person.id);
+          idCounts.set(person.id, index); // Update to latest index
+        } else {
+          idCounts.set(person.id, index);
+        }
+      }
+    });
+
+    // Remove duplicate IDs, keeping only the latest occurrence
+    if (duplicateIds.size > 0) {
+      const indicesToKeep = new Set(idCounts.values());
+      const originalCount = this.people.length;
+      const removedPeople = [];
+
+      this.people = this.people.filter((person, index) => {
+        if (
+          !indicesToKeep.has(index) &&
+          duplicateIds.has(person.id)
+        ) {
+          removedPeople.push(person.displayName);
+          return false;
+        }
+        return true;
+      });
+
+      const duplicateList = Array.from(duplicateIds).join(', ');
+      warnings.push(
+        `Found ${duplicateIds.size} duplicate student ID(s): ${duplicateList}.\n` +
+          `Solution: Kept the LATEST occurrence of each duplicate and removed ${
+            originalCount - this.people.length
+          } earlier entries.\n` +
+          `Removed: ${removedPeople.join(', ')}.\n` +
+          `This usually happens when the same student submitted the form multiple times. ` +
+          `Check your Google Form to prevent duplicate submissions (Settings > "Limit to 1 response").`
+      );
+    }
+
+    // Build valid person IDs set after duplicate removal
+    let personIds = new Set(this.people.map((p) => p.id));
+
+    // Validate people - check for missing required fields
+    for (let i = 0; i < this.people.length; i++) {
+      const person = this.people[i];
+      if (!person.id || !person.firstName || !person.lastName) {
+        errors.push(
+          `Student record #${
+            i + 1
+          } is missing required information. ` +
+            `Please ensure the data has: ID (email), First Name, and Last Name. ` +
+            `Current values: ID="${person.id || 'MISSING'}", ` +
+            `First="${person.firstName || 'MISSING'}", Last="${
+              person.lastName || 'MISSING'
+            }". ` +
+            `Check row ${
+              i + 2
+            } in your Google Sheet (accounting for header row).`
+        );
+      }
+      if (person.id && typeof person.id !== 'string') {
+        errors.push(
+          `Student record #${i + 1} has an invalid ID format. ` +
+            `ID must be text (email address), but got: ${typeof person.id}. ` +
+            `Check that the email column in row ${
+              i + 2
+            } is formatted as text, not a formula or number.`
+        );
+      }
+    }
+
+    // Validate groups
+    for (let i = 0; i < this.groups.length; i++) {
+      const group = this.groups[i];
+      if (!group.title || !group.maxSize) {
+        errors.push(
+          `Group #${i + 1} is missing required information. ` +
+            `Please ensure each group has a Title and Max Size. ` +
+            `Current values: Title="${
+              group.title || 'MISSING'
+            }", MaxSize="${group.maxSize || 'MISSING'}". ` +
+            `Check your group data source.`
+        );
+      }
+      if (
+        group.maxSize &&
+        (!Number.isInteger(group.maxSize) || group.maxSize <= 0)
+      ) {
+        errors.push(
+          `Group "${group.title}" has an invalid Max Size (${group.maxSize}). ` +
+            `Max Size must be a positive whole number greater than 0. ` +
+            `Current value is either not a number or is ${group.maxSize}. ` +
+            `Please check your group data and ensure maxSize is a valid integer.`
+        );
+      }
+    }
+
+    // Check connections and remove invalid ones
+    for (let person of this.people) {
+      let validConnections = [];
+      for (let connId of person.connections) {
+        if (!personIds.has(connId)) {
+          warnings.push(
+            `Removed invalid connection for "${person.displayName}": ` +
+              `Listed "${connId}" as a connection, but no student with that ID exists in your data. ` +
+              `Possible causes: (1) The connected person didn't submit the form, ` +
+              `(2) Their ID was typed incorrectly, or (3) They were removed as a duplicate. ` +
+              `This connection has been ignored.`
+          );
+        } else if (connId === person.id) {
+          warnings.push(
+            `Removed self-connection for "${person.displayName}": ` +
+              `Students cannot be connected to themselves. ` +
+              `Check if this student accidentally selected their own name in the form.`
+          );
+        } else {
+          validConnections.push(connId);
+        }
+      }
+
+      if (validConnections.length !== person.connections.length) {
+        person.connections = validConnections;
+        // Update happiness for this person if they're in a group
+        const assignedGroup = this.groups.find((group) =>
+          group.members.includes(person)
+        );
+        if (assignedGroup) {
+          person.updateHappiness(assignedGroup);
+        }
+      }
+    }
+
+    // Check group assignments
+    for (let group of this.groups) {
+      const assignedCount = group.members.filter(
+        (m) => m !== null
+      ).length;
+
+      if (assignedCount > group.maxSize) {
+        errors.push(
+          `Group "${group.title}" has too many members (${assignedCount}/${group.maxSize}). ` +
+            `You need to either:\n` +
+            `  • Increase the group's Max Size to at least ${assignedCount}, OR\n` +
+            `  • Remove ${
+              assignedCount - group.maxSize
+            } member(s) from this group.\n` +
+            `Use the admin tools to adjust group sizes or manually drag members to other groups.`
+        );
+      }
+
+      for (let member of group.members) {
+        if (member !== null && !personIds.has(member.id)) {
+          errors.push(
+            `Group "${group.title}" contains an unknown student (ID: ${member.id}). ` +
+              `This student's ID is not in your currently loaded data. ` +
+              `Possible causes: (1) Data was reloaded without this student, ` +
+              `(2) This is from a saved scheme file with outdated data. ` +
+              `Solution: Reload your data or load a compatible scheme file.`
+          );
+        }
+      }
+    }
+
+    // Display warnings if any
     if (warnings.length > 0) {
-      console.warn('Data quality warnings. call Andy.');
-      warnings.forEach((warning) => console.warn(warning));
+      const displayWarnings =
+        warnings.length <= 5
+          ? warnings.join('\n\n')
+          : warnings.slice(0, 5).join('\n\n') +
+            `\n\n... and ${
+              warnings.length - 5
+            } more warnings (see browser console for full list)`;
+
+      console.warn('=== DATA QUALITY WARNINGS ===');
+      warnings.forEach((warning, i) =>
+        console.warn(`${i + 1}. ${warning}`)
+      );
+
+      alert(
+        '⚠️ DATA QUALITY WARNINGS\n\n' +
+          'Some non-critical issues were found and automatically fixed:\n\n' +
+          displayWarnings +
+          '\n\n✅ Your data has been loaded successfully, but please review these warnings.\n' +
+          'Open the browser console (F12) to see the full list if there are more than 5 warnings.'
+      );
     }
 
+    // Display errors if any and stop loading
     if (errors.length > 0) {
-      alert('Data quality issues detected. call Andy.');
-      errors.forEach((error) => console.error(error));
-      throw new Error('Data quality check failed');
+      const displayErrors =
+        errors.length <= 3
+          ? errors.join('\n\n')
+          : errors.slice(0, 3).join('\n\n') +
+            `\n\n... and ${
+              errors.length - 3
+            } more errors (see browser console for full list)`;
+
+      console.error('=== DATA QUALITY ERRORS ===');
+      errors.forEach((error, i) =>
+        console.error(`${i + 1}. ${error}`)
+      );
+
+      alert(
+        '❌ DATA QUALITY ERRORS\n\n' +
+          'Critical issues prevent loading your data:\n\n' +
+          displayErrors +
+          '\n\n🔧 Please fix these issues in your source data and try loading again.\n' +
+          'Open the browser console (F12) to see the full list if there are more than 3 errors.'
+      );
+
+      throw new Error(
+        'Data quality check failed - see alert and console messages for details'
+      );
     }
+
+    console.log('✅ Data quality check passed');
   }
 
   highlightGroupAndPeople(mouseX, mouseY) {
