@@ -111,17 +111,50 @@ function showPersonTooltip(person) {
   const padding = 10;
   const lineHeight = 16;
 
-  // Calculate tooltip size based on content
+  // Find which group this person is currently in
+  let currentGroup = 'Unassigned';
+  if (scheme && scheme.groups) {
+    for (let group of scheme.groups) {
+      if (group.members.includes(person)) {
+        currentGroup = group.title;
+        break;
+      }
+    }
+  }
+
+  // Build tooltip content
   const lines = [
     `Name: ${person.displayName}`,
-    `Happiness: ${person.happiness}`,
-    `Preferences: ${
-      person.groupPreferences.length > 0
-        ? person.groupPreferences.slice(0, 4).join(', ')
-        : 'None'
+    `Current Group: ${currentGroup}`,
+    `Happiness: ${
+      person.happiness === -1 ? 'Unhappy 😞' : person.happiness
     }`,
   ];
 
+  // Add preferences if they exist
+  if (person.groupPreferences && person.groupPreferences.length > 0) {
+    const prefList = person.groupPreferences.slice(0, 4).join(', ');
+    const remaining =
+      person.groupPreferences.length > 4
+        ? ` (+${person.groupPreferences.length - 4} more)`
+        : '';
+    lines.push(`Preferences: ${prefList}${remaining}`);
+  } else {
+    lines.push(`Preferences: None`);
+  }
+
+  // Add gender if available
+  if (person.gender) {
+    lines.push(`Gender: ${person.gender}`);
+  }
+
+  // Add pinned status if applicable
+  if (person.pinned) {
+    lines.push(`📌 Pinned to: ${person.pinnedGroupTitle}`);
+  }
+
+  // Calculate tooltip dimensions
+  textSize(12);
   const maxWidth =
     Math.max(...lines.map((line) => textWidth(line))) + padding * 2;
   const tooltipHeight = lines.length * lineHeight + padding * 2;
@@ -135,8 +168,10 @@ function showPersonTooltip(person) {
   if (tooltipY + tooltipHeight > height)
     tooltipY = height - tooltipHeight - 20;
 
+  // Draw tooltip background
   rect(tooltipX, tooltipY, maxWidth, tooltipHeight, 5);
 
+  // Draw tooltip text
   fill(0);
   noStroke();
   textAlign(LEFT, TOP);
@@ -249,13 +284,18 @@ function mouseDragged() {
 
 function showAdminTools() {
   adminToolsModal.style('display', 'block');
-  // Update UI elements when modal opens
+
+  // Update all UI elements when modal opens
   if (typeof updateGroupSelect === 'function') {
     updateGroupSelect();
   }
   if (typeof updatePinnedList === 'function') {
     updatePinnedList();
   }
+  if (typeof updateGroupMaxControls === 'function') {
+    updateGroupMaxControls();
+  }
+
   // refresh imbalance slider display
   const imbalanceSlider = document.getElementById('imbalanceSlider');
   const imbalanceValue = document.getElementById('imbalanceValue');

@@ -136,6 +136,29 @@ class Group {
     return counts;
   }
 
+  updateMaxSize(newMaxSize) {
+    const oldMaxSize = this.maxSize;
+    this.maxSize = parseInt(newMaxSize);
+
+    // Adjust members array
+    if (newMaxSize > oldMaxSize) {
+      // Add more null slots
+      for (let i = oldMaxSize; i < newMaxSize; i++) {
+        this.members.push(null);
+      }
+    } else if (newMaxSize < oldMaxSize) {
+      // Remove empty slots from the end (should not happen if validation works)
+      this.members = this.members.slice(0, newMaxSize);
+    }
+
+    // Update group height
+    this.h = 40 + this.maxSize * 40;
+
+    console.log(
+      `Updated ${this.title} max size from ${oldMaxSize} to ${newMaxSize}`
+    );
+  }
+
   toString() {
     let memberNames = this.members.join(', ');
     return `Group: ${this.title}\nMax Size: ${this.maxSize}\nMembers: [${memberNames}]`;

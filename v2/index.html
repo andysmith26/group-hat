@@ -804,6 +804,94 @@
           return false;
         }
       }
+
+      // Populate the group max size controls
+      function updateGroupMaxControls() {
+        const container = document.getElementById('groupMaxControls');
+        if (!container || !scheme || scheme.groups.length === 0) {
+          return;
+        }
+
+        container.innerHTML =
+          '<div style="font-weight: bold;">Group Name</div><div style="font-weight: bold;">Current Max</div><div style="font-weight: bold;">New Max</div>';
+
+        scheme.groups.forEach((group, idx) => {
+          const label = document.createElement('div');
+          label.textContent = group.title;
+
+          const current = document.createElement('div');
+          current.textContent = group.maxSize;
+          current.style.textAlign = 'center';
+
+          const input = document.createElement('input');
+          input.type = 'number';
+          input.id = `groupMax_${idx}`;
+          input.value = group.maxSize;
+          input.min = 1;
+          input.max = 50;
+          input.style.width = '50px';
+
+          container.appendChild(label);
+          container.appendChild(current);
+          container.appendChild(input);
+        });
+      }
+
+      // Apply group max size changes
+      function applyGroupMaxChanges() {
+        if (!scheme || scheme.groups.length === 0) {
+          alert('No groups loaded');
+          return;
+        }
+
+        let changesApplied = false;
+        const errors = [];
+
+        scheme.groups.forEach((group, idx) => {
+          const input = document.getElementById(`groupMax_${idx}`);
+          if (input) {
+            const newMax = parseInt(input.value);
+
+            if (isNaN(newMax) || newMax < 1) {
+              errors.push(
+                `${group.title}: Max size must be at least 1`
+              );
+              return;
+            }
+
+            const currentMembers = group.members.filter(
+              (m) => m !== null
+            ).length;
+            if (newMax < currentMembers) {
+              errors.push(
+                `${group.title}: Cannot set max to ${newMax} because it currently has ${currentMembers} members. ` +
+                  `Remove some members first.`
+              );
+              return;
+            }
+
+            if (newMax !== group.maxSize) {
+              group.updateMaxSize(newMax);
+              changesApplied = true;
+            }
+          }
+        });
+
+        if (errors.length > 0) {
+          alert(
+            '⚠️ Some changes could not be applied:\n\n' +
+              errors.join('\n\n')
+          );
+        }
+
+        if (changesApplied) {
+          alert('✅ Group max sizes updated successfully');
+          updateGroupMaxControls(); // Refresh the display
+          resizeCanvasToFitGroups(); // Adjust canvas if needed
+        } else if (errors.length === 0) {
+          alert('No changes were made');
+        }
+      }
     </script>
   </body>
 </html>

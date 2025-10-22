@@ -1439,23 +1439,80 @@ class Scheme {
     let warnings = [];
     let errors = [];
 
-    // Check for duplicate IDs and keep only the latest occurrence
+    // Check for duplicate IDs and ASK USER before removing
     const idCounts = new Map();
     const duplicateIds = new Set();
+    const duplicateDetails = new Map(); // Store which indices have duplicates
 
     this.people.forEach((person, index) => {
       if (person.id) {
         if (idCounts.has(person.id)) {
           duplicateIds.add(person.id);
-          idCounts.set(person.id, index); // Update to latest index
+          if (!duplicateDetails.has(person.id)) {
+            duplicateDetails.set(person.id, []);
+          }
+          duplicateDetails.get(person.id).push(index);
+          idCounts.set(person.id, index); // Track latest index
         } else {
           idCounts.set(person.id, index);
+          duplicateDetails.set(person.id, [index]);
         }
       }
     });
 
-    // Remove duplicate IDs, keeping only the latest occurrence
+    // If duplicates found, show them to user and ask for confirmation
     if (duplicateIds.size > 0) {
+      let duplicateMessage = `Found ${duplicateIds.size} duplicate student ID(s):\n\n`;
+
+      Array.from(duplicateIds).forEach((id) => {
+        const indices = duplicateDetails.get(id);
+        duplicateMessage += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+        duplicateMessage += `Student ID: ${id}\n`;
+        duplicateMessage += `Found ${indices.length} submissions:\n\n`;
+
+        indices.forEach((idx, submitNum) => {
+          const person = this.people[idx];
+          const isLatest = idx === indices[indices.length - 1];
+          const status = isLatest ? '✅ KEEP (latest)' : '❌ REMOVE';
+
+          duplicateMessage += `  ${submitNum + 1}. ${status}\n`;
+          duplicateMessage += `     Name: ${person.displayName}\n`;
+          duplicateMessage += `     Gender: ${
+            person.gender || 'Not provided'
+          }\n`;
+
+          if (
+            person.groupPreferences &&
+            person.groupPreferences.length > 0
+          ) {
+            duplicateMessage += `     Preferences: ${person.groupPreferences
+              .slice(0, 3)
+              .join(', ')}${
+              person.groupPreferences.length > 3 ? '...' : ''
+            }\n`;
+          }
+          if (person.connections && person.connections.length > 0) {
+            duplicateMessage += `     Connections: ${person.connections.length} listed\n`;
+          }
+          duplicateMessage += `\n`;
+        });
+      });
+
+      duplicateMessage += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+      duplicateMessage += `This usually happens when students submitted the form multiple times.\n\n`;
+      duplicateMessage += `Solution: Keep the LATEST submission for each duplicate and remove earlier ones.\n\n`;
+      duplicateMessage += `💡 TIP: In Google Forms Settings, enable "Limit to 1 response" to prevent this.\n\n`;
+      duplicateMessage += `Proceed with removing the earlier submissions?`;
+
+      const userConfirmed = confirm(duplicateMessage);
+
+      if (!userConfirmed) {
+        throw new Error(
+          'Duplicate removal cancelled by user. Please clean your data manually and reload.'
+        );
+      }
+
+      // User confirmed - proceed with removal
       const indicesToKeep = new Set(idCounts.values());
       const originalCount = this.people.length;
       const removedPeople = [];
@@ -1465,21 +1522,16 @@ class Scheme {
           !indicesToKeep.has(index) &&
           duplicateIds.has(person.id)
         ) {
-          removedPeople.push(person.displayName);
+          removedPeople.push(`${person.displayName} (${person.id})`);
           return false;
         }
         return true;
       });
 
-      const duplicateList = Array.from(duplicateIds).join(', ');
       warnings.push(
-        `Found ${duplicateIds.size} duplicate student ID(s): ${duplicateList}.\n` +
-          `Solution: Kept the LATEST occurrence of each duplicate and removed ${
-            originalCount - this.people.length
-          } earlier entries.\n` +
-          `Removed: ${removedPeople.join(', ')}.\n` +
-          `This usually happens when the same student submitted the form multiple times. ` +
-          `Check your Google Form to prevent duplicate submissions (Settings > "Limit to 1 response").`
+        `Removed ${
+          originalCount - this.people.length
+        } duplicate submissions:\n` + removedPeople.join(', ')
       );
     }
 
@@ -1661,7 +1713,6 @@ class Scheme {
 
     console.log('✅ Data quality check passed');
   }
-
   highlightGroupAndPeople(mouseX, mouseY) {
     // Clear previous highlight
     this.clearHighlights();
@@ -2051,7 +2102,7 @@ class Scheme {
 
   serialize() {
     return JSON.stringify({
-      version: '2.6.2-pinned',
+      version: '2.7.0-paste',
       title: this.title,
       people: this.people.map((person) => ({
         id: person.id,
@@ -2060,6 +2111,7 @@ class Scheme {
         connections: person.connections,
         groupPreferences: person.groupPreferences,
         happiness: person.happiness,
+        gender: person.gender,
         x: person.x,
         y: person.y,
         pinned: person.pinned,
@@ -2083,7 +2135,6 @@ class Scheme {
     const scheme = new Scheme(obj.title);
 
     scheme.useGroupPreferences = obj.useGroupPreferences || false;
-
     // First, create people without connections or happiness
     const deserializedPeople = obj.people.map((personData) => {
       const person = new Person(
@@ -2093,13 +2144,10 @@ class Scheme {
       );
       person.x = personData.x;
       person.y = personData.y;
-      // Don't set happiness yet - it will be calculated later
       person.happiness = 0;
-      // Store connections and preferences for later
       person.connections = personData.connections || [];
       person.groupPreferences = personData.groupPreferences || [];
-
-      // Store pinned data for later
+      person.gender = personData.gender || null; // ADD THIS LINE
       person.pinned = personData.pinned || false;
       person.pinnedGroupTitle = personData.pinnedGroupTitle || null;
 
