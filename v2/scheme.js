@@ -2312,45 +2312,50 @@ class Scheme {
     return genderData;
   }
 
-  // Load data from raw paste
   loadFromRawPaste(preferencesText, genderText) {
     // Parse both datasets
     const { preferencesData, clubNames } =
       this.parsePreferencesData(preferencesText);
     const genderData = this.parseGenderData(genderText);
 
-    // Create groups from unique club names
+    // Create groups in a SINGLE HORIZONTAL ROW across the top
     const groups = [];
-    const groupsPerRow = 6;
     const groupWidth = 80;
     const groupSpacing = 100;
     const startX = 50;
     const startY = 50;
 
+    // Calculate max group height
+    const estimatedMaxSize =
+      Math.ceil(preferencesData.length / clubNames.length) + 2;
+    const maxGroupHeight = 40 + estimatedMaxSize * 40; // header + slots
+
     clubNames.forEach((clubName, idx) => {
-      const row = Math.floor(idx / groupsPerRow);
-      const col = idx % groupsPerRow;
-      const x = startX + col * groupSpacing;
-      const y = startY + row * 250;
+      const x = startX + idx * groupSpacing;
+      const y = startY;
 
-      // Calculate max size based on number of students (estimate)
-      const maxSize =
-        Math.ceil(preferencesData.length / clubNames.length) + 2;
-
-      groups.push(new Group(clubName, maxSize, x, y));
+      groups.push(new Group(clubName, estimatedMaxSize, x, y));
     });
 
-    // Create people
+    // Calculate where students should spawn (below all groups)
+    const studentSpawnYMin = startY + maxGroupHeight + 50; // 50px gap below groups
+    const studentSpawnYMax = Math.max(750, studentSpawnYMin + 300); // At least 300px height for students
+    const studentSpawnXMin = 50;
+    const studentSpawnXMax = width - 150;
+
+    // Create people and position them in the lower area
     const people = [];
     preferencesData.forEach((pref) => {
-      // Create person ID from email (part before @)
       const personId = pref.email.split('@')[0];
-
       const person = new Person(
         personId,
         pref.lastName,
         pref.firstName
       );
+
+      // Override the person's initial random position to be in the lower area
+      person.x = round(random(studentSpawnXMin, studentSpawnXMax));
+      person.y = round(random(studentSpawnYMin, studentSpawnYMax));
 
       // Set gender if available
       if (genderData[pref.email]) {
@@ -2359,11 +2364,10 @@ class Scheme {
 
       // Set group preferences (sorted by rank)
       const sortedPrefs = Object.entries(pref.preferences)
-        .sort((a, b) => a[1] - b[1]) // Sort by rank
-        .map((entry) => entry[0]); // Extract club names
+        .sort((a, b) => a[1] - b[1])
+        .map((entry) => entry[0]);
 
       person.setGroupPreferences(sortedPrefs);
-
       people.push(person);
     });
 
@@ -2371,19 +2375,19 @@ class Scheme {
     this.setGroups(groups);
     this.setPeople(people);
 
-    // Resize canvas to fit
-    resizeCanvas(
-      Math.max(2000, startX + groupsPerRow * groupSpacing + 100),
-      Math.max(
-        750,
-        startY +
-          Math.ceil(clubNames.length / groupsPerRow) * 250 +
-          100
-      )
+    // Resize canvas to accommodate horizontal group layout and student area
+    const canvasWidth = Math.max(
+      2000,
+      startX + clubNames.length * groupSpacing + 100
     );
+    const canvasHeight = Math.max(750, studentSpawnYMax + 50);
+    resizeCanvas(canvasWidth, canvasHeight);
 
     console.log(
       `Loaded ${people.length} people and ${groups.length} groups`
+    );
+    console.log(
+      `Groups positioned in single row, students spawn in Y range: ${studentSpawnYMin}-${studentSpawnYMax}`
     );
     console.log(
       `${
