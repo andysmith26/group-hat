@@ -120,6 +120,22 @@ class Group {
     });
   }
 
+  getGenderCounts() {
+    const counts = { M: 0, F: 0, Other: 0 };
+    this.members.forEach((member) => {
+      if (member !== null && member.gender) {
+        if (member.gender === 'M') {
+          counts.M++;
+        } else if (member.gender === 'F') {
+          counts.F++;
+        } else {
+          counts.Other++;
+        }
+      }
+    });
+    return counts;
+  }
+
   toString() {
     let memberNames = this.members.join(', ');
     return `Group: ${this.title}\nMax Size: ${this.maxSize}\nMembers: [${memberNames}]`;

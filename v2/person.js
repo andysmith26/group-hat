@@ -19,6 +19,8 @@ class Person {
     // New pinned assignment properties
     this.pinned = false;
     this.pinnedGroupTitle = null;
+
+    this.gender = null; // Will be set from gender data: 'M', 'F', or other
   }
 
   isMouseOver() {
@@ -122,6 +124,7 @@ class Person {
     const pinnedStatus = this.pinned
       ? ` (pinned to ${this.pinnedGroupTitle})`
       : '';
-    return `${this.id}: ${this.lastName}, ${this.firstName}${pinnedStatus}`;
+    const genderStatus = this.gender ? ` [${this.gender}]` : '';
+    return `${this.id}: ${this.lastName}, ${this.firstName}${genderStatus}${pinnedStatus}`;
   }
 }

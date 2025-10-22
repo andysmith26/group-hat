@@ -42,8 +42,13 @@ function setup() {
     }
   });
 
-  preferenceToggleBtn = select('#preferenceToggleBtn');
-  preferenceToggleBtn.mousePressed(togglePreferenceMode);
+  // Add parse data button functionality
+  const parseDataBtn = select('#parseDataBtn');
+  parseDataBtn.mousePressed(parseAndLoadData);
+
+  // Replace the old preference toggle with new mode toggle
+  const modeToggleBtn = select('#modeToggleBtn');
+  modeToggleBtn.mousePressed(toggleMode);
 }
 
 function draw() {
@@ -100,11 +105,75 @@ function loadTestData() {
   console.log('loading test data');
 }
 
-function togglePreferenceMode() {
+function toggleMode() {
   scheme.useGroupPreferences = !scheme.useGroupPreferences;
-  console.log(
-    `Using group preferences: ${scheme.useGroupPreferences}`
-  );
+  updateModeDisplay();
+}
+
+function updateModeDisplay() {
+  const btn = select('#modeToggleBtn');
+  const desc = select('#modeDescription');
+
+  if (scheme.useGroupPreferences) {
+    btn.html('🎯 ClubHat (using preferences)');
+    btn.style('background-color', '#ff9933');
+    desc.html('Sorting students by club preferences');
+  } else {
+    btn.html('👥 FriendHat (using connections)');
+    btn.style('background-color', '#3399ff');
+    desc.html('Sorting students by friend connections');
+  }
+}
+
+function parseAndLoadData() {
+  const preferencesTextarea = select('#preferencesData');
+  const genderTextarea = select('#genderData');
+  const statusSpan = select('#parseStatus');
+
+  const preferencesText = preferencesTextarea.value();
+  const genderText = genderTextarea.value();
+
+  if (!preferencesText.trim()) {
+    statusSpan.html('❌ Please paste preferences data');
+    statusSpan.style('color', 'red');
+    return;
+  }
+
+  if (!genderText.trim()) {
+    statusSpan.html('❌ Please paste gender data');
+    statusSpan.style('color', 'red');
+    return;
+  }
+
+  try {
+    statusSpan.html('⏳ Parsing...');
+    statusSpan.style('color', 'blue');
+
+    const result = scheme.loadFromRawPaste(
+      preferencesText,
+      genderText
+    );
+
+    statusSpan.html(
+      `✅ Loaded ${result.peopleCount} students, ${result.groupsCount} clubs, ${result.withGender} with gender`
+    );
+    statusSpan.style('color', 'green');
+
+    // Update mode display
+    updateModeDisplay();
+
+    // Update UI if functions exist
+    if (typeof updateGroupSelect === 'function') {
+      updateGroupSelect();
+    }
+    if (typeof updatePinnedList === 'function') {
+      updatePinnedList();
+    }
+  } catch (error) {
+    console.error('Parse error:', error);
+    statusSpan.html(`❌ Error: ${error.message}`);
+    statusSpan.style('color', 'red');
+  }
 }
 
 function mousePressed() {

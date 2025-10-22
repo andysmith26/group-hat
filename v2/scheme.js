@@ -1505,11 +1505,48 @@ class Scheme {
       strokeWeight(1);
       rect(group.x, group.y, group.w, group.h);
 
+      // Draw group title
       fill(0);
       noStroke();
-      textAlign(CENTER, CENTER);
-      textSize(16);
-      text(group.title, group.x + group.w / 2, group.y + 15);
+      textAlign(CENTER, TOP);
+      textSize(12);
+      text(group.title, group.x + group.w / 2, group.y + 2);
+
+      // Draw gender counts
+      const genderCounts = group.getGenderCounts();
+      const totalAssigned = group.members.filter(
+        (m) => m !== null
+      ).length;
+      if (totalAssigned > 0) {
+        textSize(9);
+        textAlign(CENTER, TOP);
+
+        // M in blue
+        fill(100, 150, 255);
+        text(
+          `M:${genderCounts.M}`,
+          group.x + group.w / 2 - 20,
+          group.y + 16
+        );
+
+        // F in pink
+        fill(255, 150, 200);
+        text(
+          `F:${genderCounts.F}`,
+          group.x + group.w / 2,
+          group.y + 16
+        );
+
+        // Other in purple
+        if (genderCounts.Other > 0) {
+          fill(150, 100, 255);
+          text(
+            `O:${genderCounts.Other}`,
+            group.x + group.w / 2 + 20,
+            group.y + 16
+          );
+        }
+      }
 
       // draw slots
       let rows = group.maxSize;
@@ -1528,119 +1565,134 @@ class Scheme {
     // Draw all people except the currently clicked one
     for (let person of this.people) {
       person.updatePosition();
-      if (person !== this.currentDragged) {
-        this.showPerson(person);
+      if (person === this.currentDragged) {
+        continue;
+      }
+
+      // Determine fill color based on state
+      if (person === this.currentHover) {
+        fill(255, 255, 0); // Yellow for hover
+      } else if (this.currentConnectionIds.includes(person.id)) {
+        fill(0, 255, 0); // Green for connections
+      } else if (person.highlighted) {
+        fill(100, 100, 255); // Blue for highlighted
+      } else if (person.pinned) {
+        fill(255, 200, 255); // Light pink for pinned
+      } else {
+        fill(200); // Gray default
+      }
+
+      stroke(0);
+      strokeWeight(1);
+      rect(person.x, person.y, person.w, person.h);
+
+      // Draw happiness indicator
+      if (person.happiness === -1) {
+        fill(255, 0, 0);
+      } else if (person.happiness === 0) {
+        fill(100);
+      } else {
+        fill(0);
+      }
+      noStroke();
+      textAlign(CENTER, CENTER);
+      textSize(12);
+      text(
+        person.displayName,
+        person.x + person.w / 2,
+        person.y + person.h / 2
+      );
+
+      // Draw gender badge
+      if (person.gender) {
+        let badgeColor;
+        if (person.gender === 'M') {
+          badgeColor = color(100, 150, 255); // Blue
+        } else if (person.gender === 'F') {
+          badgeColor = color(255, 150, 200); // Pink
+        } else {
+          badgeColor = color(150, 100, 255); // Purple
+        }
+
+        fill(badgeColor);
+        noStroke();
+        const badgeSize = 8;
+        circle(
+          person.x + person.w - badgeSize / 2 - 2,
+          person.y + badgeSize / 2 + 2,
+          badgeSize
+        );
+
+        // Draw letter
+        fill(255);
+        textSize(7);
+        textAlign(CENTER, CENTER);
+        text(
+          person.gender.charAt(0),
+          person.x + person.w - badgeSize / 2 - 2,
+          person.y + badgeSize / 2 + 2
+        );
       }
     }
 
-    // Draw the currently clicked person last to ensure they appear on top
+    // Draw the currently dragged person last (on top)
     if (this.currentDragged) {
-      this.showPerson(this.currentDragged);
-    }
-  }
-
-  showPerson(person) {
-    let isHighlighted = false;
-    let rank = null;
-
-    // Check if there's a highlighted group and if the person ranks it as 1 or 2
-    if (this.highlightedGroup) {
-      rank = person.getPreferenceRank(this.highlightedGroup.title);
-      isHighlighted = rank !== null && rank <= this.rankThreshold;
-    }
-
-    if (isHighlighted) {
-      fill(40, 40, 255, 100);
-    } else if (
-      this.currentHover == person ||
-      this.currentDragged == person
-    ) {
-      this.showGroupPreferences(person);
-      fill(210, 210, 40, 100);
-    } else if (this.currentConnectionIds.includes(person.id)) {
-      fill(255, 255, 40, 100);
-    } else {
-      fill(255, 100);
-    }
-
-    // Determine the outline color and weight based on the person's connections and happiness
-    let assignedToGroup = this.groups.some((group) =>
-      group.members.includes(person)
-    );
-
-    // Special styling for pinned people
-    if (person.pinned) {
-      stroke(255, 0, 255); // Magenta outline for pinned people
-      strokeWeight(1);
-    } else if (!assignedToGroup) {
-      stroke(200); // Light gray outline if not assigned to any group
-      strokeWeight(1);
-    } else if (person.happiness === 0) {
-      stroke(0); // Black outline if no connections
-      strokeWeight(1);
-    } else if (person.happiness === -1) {
-      stroke(200, 0, 0); // Red outline if assigned to a group but happiness is 0
-      strokeWeight(1);
-    } else {
-      stroke(0, 200, 0); // Green outline if assigned to a group and happiness is greater than 0
-      strokeWeight(person.happiness);
-    }
-
-    rect(person.x, person.y, person.w, person.h);
-
-    fill(0);
-    noStroke();
-    textSize(12);
-    textAlign(CENTER, CENTER);
-    text(
-      person.displayName,
-      person.x + person.w / 2,
-      person.y + person.h / 2
-    );
-
-    // Display pin icon for pinned people - show first letter of group
-    if (person.pinned && person.pinnedGroupTitle) {
-      const pinSize = 8;
-      const pinX = person.x + person.w - pinSize - 2;
-      const pinY = person.y + 2;
-
-      fill(255, 0, 255); // Magenta pin
-      noStroke();
-      ellipse(
-        pinX + pinSize / 2,
-        pinY + pinSize / 2,
-        pinSize,
-        pinSize
+      this.currentDragged.updatePosition();
+      fill(255, 255, 0);
+      stroke(0);
+      strokeWeight(2);
+      rect(
+        this.currentDragged.x,
+        this.currentDragged.y,
+        this.currentDragged.w,
+        this.currentDragged.h
       );
 
-      fill(255);
-      textAlign(CENTER, CENTER);
-      textSize(6);
-      // Show first letter of the pinned group title
-      const firstLetter = person.pinnedGroupTitle
-        .charAt(0)
-        .toUpperCase();
-      text(firstLetter, pinX + pinSize / 2, pinY + pinSize / 2);
-    }
-
-    // Display preference rank if person is highlighted
-    if (isHighlighted && rank !== null) {
-      const squareSize = 20;
-      const squareX = person.x + person.w + 2;
-      const squareY = person.y - squareSize / 2 + person.h / 2;
-
-      // Draw square behind the number
-      fill(255); // White background
-      stroke(0);
-      strokeWeight(1);
-      rect(squareX, squareY, squareSize, squareSize);
-
-      // Draw rank number
       fill(0);
       noStroke();
       textAlign(CENTER, CENTER);
-      textSize(16);
-      text(rank, squareX + squareSize / 2, squareY + squareSize / 2);
+      textSize(12);
+      text(
+        this.currentDragged.displayName,
+        this.currentDragged.x + this.currentDragged.w / 2,
+        this.currentDragged.y + this.currentDragged.h / 2
+      );
+
+      // Draw gender badge on dragged person
+      if (this.currentDragged.gender) {
+        let badgeColor;
+        if (this.currentDragged.gender === 'M') {
+          badgeColor = color(100, 150, 255);
+        } else if (this.currentDragged.gender === 'F') {
+          badgeColor = color(255, 150, 200);
+        } else {
+          badgeColor = color(150, 100, 255);
+        }
+
+        fill(badgeColor);
+        noStroke();
+        const badgeSize = 8;
+        circle(
+          this.currentDragged.x +
+            this.currentDragged.w -
+            badgeSize / 2 -
+            2,
+          this.currentDragged.y + badgeSize / 2 + 2,
+          badgeSize
+        );
+
+        fill(255);
+        textSize(7);
+        textAlign(CENTER, CENTER);
+        text(
+          this.currentDragged.gender.charAt(0),
+          this.currentDragged.x +
+            this.currentDragged.w -
+            badgeSize / 2 -
+            2,
+          this.currentDragged.y + badgeSize / 2 + 2
+        );
+      }
     }
   }
 
@@ -1845,6 +1897,228 @@ class Scheme {
     );
 
     return scheme;
+  }
+
+  // Parse preferences data from Google Sheets paste
+  parsePreferencesData(rawText) {
+    const lines = rawText.trim().split('\n');
+    if (lines.length < 2) {
+      throw new Error(
+        'Preferences data must have at least a header row and one data row'
+      );
+    }
+
+    // Parse header to find column indices
+    const headers = lines[0].split('\t');
+    const emailIdx = headers.findIndex((h) =>
+      h.toLowerCase().includes('email')
+    );
+    const nameIdx = headers.findIndex((h) =>
+      h.toLowerCase().includes('name')
+    );
+
+    if (emailIdx === -1 || nameIdx === -1) {
+      throw new Error(
+        'Could not find Email and Name columns in preferences data'
+      );
+    }
+
+    // Find all club preference columns (they contain "Please Request Four Clubs")
+    const clubColumnIndices = [];
+    const clubNames = [];
+    headers.forEach((header, idx) => {
+      if (header.includes('Please Request Four Clubs')) {
+        // Extract club name from header like "Please Request Four Clubs: [Yearbook Club]"
+        const match = header.match(/\[([^\]]+)\]/);
+        if (match) {
+          clubColumnIndices.push(idx);
+          clubNames.push(match[1].trim());
+        }
+      }
+    });
+
+    if (clubNames.length === 0) {
+      throw new Error('Could not find any club preference columns');
+    }
+
+    // Parse data rows
+    const preferencesData = [];
+    for (let i = 1; i < lines.length; i++) {
+      const cells = lines[i].split('\t');
+      if (cells.length < Math.max(emailIdx, nameIdx) + 1) continue; // Skip incomplete rows
+
+      const email = cells[emailIdx].trim();
+      const fullName = cells[nameIdx].trim();
+
+      if (!email || !fullName) continue; // Skip rows without email or name
+
+      // Parse name into first and last
+      const nameParts = fullName.split(' ');
+      const firstName = nameParts[0];
+      const lastName = nameParts.slice(1).join(' ') || nameParts[0]; // Use first name if no last name
+
+      // Extract preferences with ranks
+      const preferences = {};
+      clubColumnIndices.forEach((colIdx, clubIdx) => {
+        const value = cells[colIdx] ? cells[colIdx].trim() : '';
+        if (value) {
+          // Parse rank from values like "1st Choice", "2nd Choice", etc.
+          let rank = 5; // Default low priority
+          if (value.includes('1st')) rank = 1;
+          else if (value.includes('2nd')) rank = 2;
+          else if (value.includes('3rd')) rank = 3;
+          else if (value.includes('4th')) rank = 4;
+
+          const clubName = clubNames[clubIdx];
+          preferences[clubName] = rank;
+        }
+      });
+
+      preferencesData.push({
+        email,
+        firstName,
+        lastName,
+        preferences,
+      });
+    }
+
+    return { preferencesData, clubNames };
+  }
+
+  // Parse gender data from Google Sheets paste
+  parseGenderData(rawText) {
+    const lines = rawText.trim().split('\n');
+    if (lines.length < 2) {
+      throw new Error(
+        'Gender data must have at least a header row and one data row'
+      );
+    }
+
+    // Parse header
+    const headers = lines[0]
+      .split('\t')
+      .map((h) => h.trim().toUpperCase());
+    const genderIdx = headers.indexOf('GENDER');
+    const firstIdx = headers.indexOf('FIRST');
+    const lastIdx = headers.indexOf('LAST');
+    const emailIdx = headers.indexOf('EMAIL');
+
+    if (
+      genderIdx === -1 ||
+      firstIdx === -1 ||
+      lastIdx === -1 ||
+      emailIdx === -1
+    ) {
+      throw new Error(
+        'Gender data must have GENDER, FIRST, LAST, EMAIL columns'
+      );
+    }
+
+    // Parse data rows
+    const genderData = {};
+    for (let i = 1; i < lines.length; i++) {
+      const cells = lines[i].split('\t');
+      if (
+        cells.length <
+        Math.max(genderIdx, firstIdx, lastIdx, emailIdx) + 1
+      )
+        continue;
+
+      const email = cells[emailIdx].trim();
+      const gender = cells[genderIdx].trim().toUpperCase();
+
+      if (email && gender) {
+        genderData[email] = gender;
+      }
+    }
+
+    return genderData;
+  }
+
+  // Load data from raw paste
+  loadFromRawPaste(preferencesText, genderText) {
+    // Parse both datasets
+    const { preferencesData, clubNames } =
+      this.parsePreferencesData(preferencesText);
+    const genderData = this.parseGenderData(genderText);
+
+    // Create groups from unique club names
+    const groups = [];
+    const groupsPerRow = 6;
+    const groupWidth = 80;
+    const groupSpacing = 100;
+    const startX = 50;
+    const startY = 50;
+
+    clubNames.forEach((clubName, idx) => {
+      const row = Math.floor(idx / groupsPerRow);
+      const col = idx % groupsPerRow;
+      const x = startX + col * groupSpacing;
+      const y = startY + row * 250;
+
+      // Calculate max size based on number of students (estimate)
+      const maxSize =
+        Math.ceil(preferencesData.length / clubNames.length) + 2;
+
+      groups.push(new Group(clubName, maxSize, x, y));
+    });
+
+    // Create people
+    const people = [];
+    preferencesData.forEach((pref) => {
+      // Create person ID from email (part before @)
+      const personId = pref.email.split('@')[0];
+
+      const person = new Person(
+        personId,
+        pref.lastName,
+        pref.firstName
+      );
+
+      // Set gender if available
+      if (genderData[pref.email]) {
+        person.gender = genderData[pref.email];
+      }
+
+      // Set group preferences (sorted by rank)
+      const sortedPrefs = Object.entries(pref.preferences)
+        .sort((a, b) => a[1] - b[1]) // Sort by rank
+        .map((entry) => entry[0]); // Extract club names
+
+      person.setGroupPreferences(sortedPrefs);
+
+      people.push(person);
+    });
+
+    // Set data
+    this.setGroups(groups);
+    this.setPeople(people);
+
+    // Resize canvas to fit
+    resizeCanvas(
+      Math.max(2000, startX + groupsPerRow * groupSpacing + 100),
+      Math.max(
+        750,
+        startY +
+          Math.ceil(clubNames.length / groupsPerRow) * 250 +
+          100
+      )
+    );
+
+    console.log(
+      `Loaded ${people.length} people and ${groups.length} groups`
+    );
+    console.log(
+      `${
+        people.filter((p) => p.gender).length
+      } people have gender data`
+    );
+
+    return {
+      peopleCount: people.length,
+      groupsCount: groups.length,
+      withGender: people.filter((p) => p.gender).length,
+    };
   }
 
   cleanupInvalidPinnedAssignments() {
