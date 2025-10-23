@@ -1782,13 +1782,13 @@ class Scheme {
           push();
           fill(0);
           noStroke();
-          textAlign(RIGHT, TOP);
+          textAlign(RIGHT, BOTTOM);
           textSize(14);
           textStyle(BOLD);
           text(
             `${rank}${this.getOrdinalSuffix(rank)}`,
             group.x + group.w - 5,
-            group.y + 2
+            group.y - 3
           );
           textStyle(NORMAL);
           pop();
